@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fff6ee">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ぱしゃっと">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>ぱしゃっと</title>
+<style>
+:root{
+  --bg:#fff6ee; --card:#fffdf8; --ink:#3b322c; --sub:#8a7e72; --accent:#ff6b81; --line:#eadfd3;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif}
+body{min-height:100dvh}
+button,input{font:inherit;color:inherit}
+a{color:inherit}
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:rgba(255,246,238,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top h1{flex:1;margin:0;font-size:18px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:28px;text-decoration:none;background:none;border:0;cursor:pointer}
+.top .acts{display:flex;min-width:40px;justify-content:flex-end}
+.wrap{max-width:520px;margin:0 auto;padding:14px 14px calc(120px + env(safe-area-inset-bottom))}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.big{width:100%;padding:14px;font-size:16px;margin-top:12px}
+.btn:disabled{opacity:.5}
+.glist{display:flex;flex-direction:column;gap:10px}
+.gcard{display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:14px;text-decoration:none;box-shadow:0 2px 6px rgba(120,90,60,.06)}
+.gname{font-weight:700;font-size:16px}
+.chev{font-size:24px;color:var(--sub)}
+.empty{text-align:center;color:var(--sub);padding:36px 12px;line-height:1.8}
+.note{color:var(--sub);font-size:12px;line-height:1.7;margin-top:18px}
+.tip{display:flex;gap:8px;align-items:flex-start;background:#fff0d9;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:12px}
+.tip button{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;color:var(--sub)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card h2{margin:4px 0 12px}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 0}
+input[type=text]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+
+/* feed */
+.feed{display:flex;flex-direction:column;gap:26px}
+.post{background:transparent}
+.phead{display:flex;align-items:center;gap:8px;padding:0 4px 8px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.phead .who{font-weight:700;font-size:14px}
+.polaroid{background:var(--card);padding:14px 14px 0;border-radius:4px;box-shadow:0 6px 18px rgba(90,60,30,.18),0 1px 3px rgba(90,60,30,.15)}
+.post:nth-child(odd) .polaroid{transform:rotate(-.7deg)}
+.post:nth-child(even) .polaroid{transform:rotate(.7deg)}
+.media{aspect-ratio:1/1;background:#2a2420;overflow:hidden}
+.media img,.media video{width:100%;height:100%;object-fit:cover;display:block}
+.cap{padding:16px 0 20px;text-align:center;font-family:"Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif;font-size:19px;color:#4a4038;letter-spacing:.5px}
+.vbadge{font-size:12px;margin-left:6px;color:var(--sub);font-family:sans-serif}
+.pact{display:flex;gap:16px;align-items:center;padding:12px 4px 4px;font-size:14px}
+.pact button{background:none;border:0;padding:4px 2px;cursor:pointer;color:var(--ink)}
+.pact .sp{flex:1}
+.comments{padding:2px 4px}
+.cm{font-size:14px;line-height:1.6;padding:3px 0;word-break:break-word}
+.cm b{margin-right:6px}
+.cm .x{background:none;border:0;color:var(--sub);cursor:pointer;margin-left:6px}
+.cform{display:flex;gap:8px;padding:6px 4px 0}
+.cform input{margin:0;padding:9px 12px;border-radius:999px;font-size:15px}
+.cform .send{background:none;border:0;color:var(--accent);font-weight:700;cursor:pointer}
+
+/* fab */
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));z-index:20;width:72px;height:72px;border-radius:50%;border:4px solid #fff;background:var(--accent);color:#fff;font-size:30px;box-shadow:0 6px 18px rgba(255,107,129,.5);cursor:pointer}
+
+/* modal & toast */
+.overlay{position:fixed;inset:0;z-index:100;background:rgba(40,28,20,.5);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{width:100%;max-width:380px;background:var(--card);border-radius:18px;padding:20px}
+.modal h2{margin:0 0 6px;font-size:18px}
+.modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.toast{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:200;background:rgba(40,28,20,.9);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;max-width:90vw;text-align:center}
+
+/* camera */
+.cam{position:fixed;inset:0;z-index:150;background:#000;color:#fff;display:flex;flex-direction:column}
+.cam .bar{display:flex;justify-content:space-between;align-items:center;padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
+.cam .bar button{background:rgba(255,255,255,.16);border:0;color:#fff;border-radius:999px;padding:8px 14px;font-size:15px;cursor:pointer}
+.cam .view{position:relative;width:100%;aspect-ratio:1/1;background:#111;overflow:hidden}
+.cam video{width:100%;height:100%;object-fit:cover}
+.cam video.mirror{transform:scaleX(-1)}
+.cam .timer{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(220,40,60,.9);padding:4px 12px;border-radius:999px;font-size:14px;font-weight:700}
+.cam .busy{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:16px}
+.cam .modes{display:flex;justify-content:center;gap:8px;margin-top:20px}
+.cam .modes button{background:transparent;border:0;color:rgba(255,255,255,.6);font-size:16px;padding:6px 14px;border-radius:999px;cursor:pointer}
+.cam .modes button.on{color:#fff;background:rgba(255,255,255,.2);font-weight:700}
+.cam .shutter-row{flex:1;display:flex;align-items:center;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
+.shutter{width:84px;height:84px;border-radius:50%;border:5px solid #fff;background:transparent;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.shutter i{display:block;width:62px;height:62px;border-radius:50%;background:#fff;transition:all .15s}
+.shutter.video i{background:#ff3b50}
+.shutter.rec i{width:34px;height:34px;border-radius:8px;background:#ff3b50}
+.shutter:disabled{opacity:.4}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+// ====== 設定（Supabaseの値をここに貼る） ======
+const SUPABASE_URL = "https://krkpgjuxrlhllttluinr.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_E7OTdMtaDP9O6RkIoumsyQ_Ieefp72J";
+const MAX_VIDEO_SEC = 15;
+const APP_NAME = "ぱしゃっと";
+
+// ====== ユーティリティ ======
+const $ = (s, r = document) => r.querySelector(s);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) e.setAttribute(k, "");
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  }
+  return e;
+}
+function toast(msg) {
+  const t = el("div", { class: "toast" }, msg);
+  document.body.append(t);
+  setTimeout(() => t.remove(), 2400);
+}
+function fmt(d) {
+  d = new Date(d);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function stamp(d) { return fmt(d).replace(/[. :]/g, ""); }
+
+function askForm(title, fields, okLabel = "OK") {
+  return new Promise(resolve => {
+    const inputs = fields.map(f => el("input", { type: "text", maxlength: f.max || 30, placeholder: f.placeholder || "", value: f.value || "" }));
+    let overlay;
+    const close = val => { overlay.remove(); resolve(val); };
+    const form = el("form", {
+      class: "modal",
+      onsubmit: e => {
+        e.preventDefault();
+        const vals = inputs.map(i => i.value.trim());
+        if (vals.some(v => !v)) { toast("入力してください"); return; }
+        close(vals);
+      }
+    },
+      el("h2", {}, title),
+      fields.map((f, i) => el("label", {}, f.label, inputs[i])),
+      el("div", { class: "row" },
+        el("button", { type: "button", class: "btn ghost", onclick: () => close(null) }, "キャンセル"),
+        el("button", { type: "submit", class: "btn" }, okLabel))
+    );
+    overlay = el("div", { class: "overlay" }, form);
+    document.body.append(overlay);
+    inputs[0].focus();
+  });
+}
+
+function topbar(title, opts = {}) {
+  return el("header", { class: "top" },
+    opts.back ? el("a", { class: "icon", href: "#/" }, "‹") : el("span", { class: "icon" }),
+    el("h1", {}, title),
+    el("div", { class: "acts" }, ...(opts.actions || []))
+  );
+}
+
+// ====== Supabase ======
+const configured = !SUPABASE_URL.startsWith("YOUR_");
+const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let me = null;
+let refreshHook = null;
+
+async function ensureUser() {
+  let { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    const { data, error } = await sb.auth.signInAnonymously();
+    if (error) throw error;
+    session = data.session;
+  }
+  me = session.user;
+}
+
+// ====== ルーター ======
+async function route() {
+  refreshHook = null;
+  if (window.__camClose) window.__camClose();
+  const app = $("#app");
+  app.replaceChildren();
+  if (!configured) {
+    app.append(topbar(APP_NAME), el("main", { class: "wrap" }, el("p", { class: "empty" }, "まだ設定が終わっていません。", el("br"), "index.html の SUPABASE_URL と SUPABASE_ANON_KEY を設定してください。")));
+    return;
+  }
+  try {
+    if (!me) await ensureUser();
+    const hash = location.hash || "#/";
+    let m;
+    if ((m = hash.match(/^#\/join\/(.+)$/))) await joinPage(m[1]);
+    else if ((m = hash.match(/^#\/g\/([0-9a-fA-F-]+)$/))) await groupPage(m[1]);
+    else await homePage();
+  } catch (e) {
+    console.error(e);
+    app.replaceChildren(topbar(APP_NAME), el("main", { class: "wrap" },
+      el("p", { class: "empty" }, "うまく読み込めませんでした。", el("br"), String(e.message || e)),
+      el("button", { class: "btn big", onclick: () => location.reload() }, "再読み込み")));
+  }
+}
+window.addEventListener("hashchange", route);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && refreshHook) refreshHook(); });
+
+// ====== ホーム ======
+function installTip() {
+  const standalone = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  if (standalone || store.get("tipClosed")) return null;
+  const box = el("div", { class: "tip" },
+    el("div", { style: "flex:1" }, "ホーム画面に追加するとアプリみたいに使えます。（iPhone：共有ボタン → ホーム画面に追加 ／ Android：メニュー → ホーム画面に追加）"),
+    el("button", { onclick: () => { store.set("tipClosed", "1"); box.remove(); } }, "×"));
+  return box;
+}
+
+async function homePage() {
+  const app = $("#app");
+  const { data: groups, error } = await sb.from("groups").select("id,name,created_at").order("created_at", { ascending: false });
+  if (error) throw error;
+  app.append(
+    topbar(APP_NAME),
+    el("main", { class: "wrap" },
+      installTip(),
+      groups.length
+        ? el("div", { class: "glist" }, groups.map(g => el("a", { class: "gcard", href: "#/g/" + g.id }, el("span", { class: "gname" }, g.name), el("span", { class: "chev" }, "›"))))
+        : el("p", { class: "empty" }, "まだグループがありません。", el("br"), "グループを作って、友達に招待リンクを送ろう！"),
+      el("button", { class: "btn big", onclick: createGroup }, "＋ グループを作る"),
+      el("p", { class: "note" }, "※ ログイン不要で、この端末のブラウザがあなたとして記憶されます。ブラウザのデータを消したり機種変更したりした場合は、招待リンクからもう一度参加してください。")
+    )
+  );
+}
+
+async function createGroup() {
+  const r = await askForm("新しいグループ", [
+    { label: "グループ名", max: 40, placeholder: "例：週末あそび隊" },
+    { label: "あなたの名前", max: 20, value: store.get("myname") || "" }
+  ], "作成");
+  if (!r) return;
+  store.set("myname", r[1]);
+  const { data, error } = await sb.rpc("create_group", { p_name: r[0], p_display: r[1] });
+  if (error) { console.error(error); toast("作成できませんでした"); return; }
+  location.hash = "#/g/" + data;
+}
+
+// ====== 招待リンクから参加 ======
+async function joinPage(code) {
+  const app = $("#app");
+  const { data, error } = await sb.rpc("preview_group", { p_code: code });
+  const g = data && data[0];
+  if (error || !g) {
+    app.append(topbar(APP_NAME), el("main", { class: "wrap" },
+      el("p", { class: "empty" }, "この招待リンクは無効です。"),
+      el("a", { class: "btn big", href: "#/" }, "ホームへ")));
+    return;
+  }
+  const input = el("input", { type: "text", maxlength: 20, placeholder: "みんなに表示される名前", value: store.get("myname") || "" });
+  const btn = el("button", {
+    class: "btn big",
+    onclick: async () => {
+      const name = input.value.trim();
+      if (!name) { toast("名前を入れてください"); return; }
+      btn.disabled = true;
+      store.set("myname", name);
+      const { data: gid, error: je } = await sb.rpc("join_group", { p_code: code, p_display: name });
+      if (je) { console.error(je); toast("参加できませんでした"); btn.disabled = false; return; }
+      location.hash = "#/g/" + gid;
+    }
+  }, "参加する");
+  app.append(topbar(APP_NAME), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("div", { style: "color:var(--sub);font-size:13px" }, "招待されたグループ"),
+      el("h2", {}, g.name),
+      el("label", {}, "あなたの名前", input),
+      btn)));
+}
+
+// ====== グループ（フィード） ======
+async function inviteShare(group) {
+  const url = `${location.origin}${location.pathname}#/join/${group.invite_code}`;
+  const text = `「${group.name}」に参加してね📷`;
+  if (navigator.share) {
+    try { await navigator.share({ title: APP_NAME, text, url }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(url); toast("招待リンクをコピーしました"); }
+  catch { prompt("招待リンク", url); }
+}
+
+async function groupPage(gid) {
+  const app = $("#app");
+  const [gr, mr] = await Promise.all([
+    sb.from("groups").select("*").eq("id", gid).maybeSingle(),
+    sb.from("members").select("user_id,display_name").eq("group_id", gid)
+  ]);
+  const group = gr.data;
+  if (gr.error || !group) {
+    app.append(topbar(APP_NAME, { back: true }), el("main", { class: "wrap" },
+      el("p", { class: "empty" }, "このグループが見つからないか、参加していません。"),
+      el("a", { class: "btn big", href: "#/" }, "ホームへ")));
+    return;
+  }
+  const names = Object.fromEntries((mr.data || []).map(m => [m.user_id, m.display_name]));
+  const isOwner = group.owner_id === me.id;
+  let limit = 20;
+  const feed = el("div", { class: "feed" });
+
+  async function loadFeed() {
+    const { data: rows, error } = await sb.from("posts").select("*").eq("group_id", gid)
+      .order("taken_at", { ascending: false }).limit(limit + 1);
+    if (error) { console.error(error); toast("読み込みに失敗しました"); return; }
+    const more = rows.length > limit;
+    const posts = rows.slice(0, limit);
+    let comments = [];
+    const urls = {};
+    if (posts.length) {
+      const [c, s] = await Promise.all([
+        sb.from("comments").select("*").in("post_id", posts.map(p => p.id)).order("created_at"),
+        sb.storage.from("media").createSignedUrls(posts.map(p => p.media_path), 3600)
+      ]);
+      comments = c.data || [];
+      (s.data || []).forEach(x => { if (x.path && x.signedUrl) urls[x.path] = x.signedUrl; });
+    }
+    if (!posts.length) {
+      feed.replaceChildren(el("p", { class: "empty" }, "まだ投稿がありません。", el("br"), "下のカメラボタンで最初の1枚を撮ろう📷"));
+      return;
+    }
+    feed.replaceChildren(
+      posts.map(p => postCard(p, comments.filter(c => c.post_id === p.id), urls[p.media_path], names, isOwner, loadFeed)),
+      more ? el("button", { class: "btn ghost", onclick: () => { limit += 20; loadFeed(); } }, "もっと見る") : null
+    );
+  }
+
+  refreshHook = loadFeed;
+  app.append(
+    topbar(group.name, {
+      back: true,
+      actions: [
+        el("button", { class: "icon", title: "更新", style: "font-size:20px", onclick: () => { loadFeed(); toast("更新しました"); } }, "↻"),
+        el("button", { class: "icon", title: "招待", style: "font-size:20px", onclick: () => inviteShare(group) }, "👥")
+      ]
+    }),
+    el("main", { class: "wrap" }, feed),
+    el("button", { class: "fab", title: "撮影", onclick: () => openCamera(gid, loadFeed) }, "📷")
+  );
+  await loadFeed();
+}
+
+function postCard(p, initialComments, url, names, isOwner, reload) {
+  const mine = p.user_id === me.id;
+  const canDelete = mine || isOwner;
+  const who = names[p.user_id] || "退出したメンバー";
+  const list = [...initialComments];
+  const media = p.media_type === "video"
+    ? el("video", { src: url ? url + "#t=0.1" : "", controls: true, playsinline: true, preload: "metadata" })
+    : el("img", { src: url || "", loading: "lazy", alt: "" });
+
+  const clist = el("div", { class: "comments" });
+  const countEl = el("span", {}, "");
+  function renderComments() {
+    clist.replaceChildren(list.map(c => el("div", { class: "cm" },
+      el("b", {}, names[c.user_id] || "退出したメンバー"),
+      c.body,
+      (c.user_id === me.id || isOwner) ? el("button", { class: "x", onclick: () => delComment(c) }, "×") : null)));
+    countEl.textContent = list.length ? String(list.length) : "";
+  }
+  async function delComment(c) {
+    const { data, error } = await sb.from("comments").delete().eq("id", c.id).select();
+    if (error || !data || !data.length) { toast("削除できませんでした"); return; }
+    list.splice(list.findIndex(x => x.id === c.id), 1);
+    renderComments();
+  }
+  const inp = el("input", { type: "text", maxlength: 300, placeholder: "コメントを書く…" });
+  const cform = el("form", {
+    class: "cform",
+    onsubmit: async e => {
+      e.preventDefault();
+      const body = inp.value.trim();
+      if (!body) return;
+      inp.value = "";
+      const { data, error } = await sb.from("comments").insert({ post_id: p.id, group_id: p.group_id, body }).select().single();
+      if (error) { console.error(error); toast("送れませんでした"); inp.value = body; return; }
+      list.push(data);
+      renderComments();
+    }
+  }, inp, el("button", { class: "send", type: "submit" }, "送信"));
+
+  async function del() {
+    if (!confirm("この投稿を削除しますか？")) return;
+    const { data, error } = await sb.from("posts").delete().eq("id", p.id).select();
+    if (error || !data || !data.length) { toast("削除できませんでした"); return; }
+    await sb.storage.from("media").remove([p.media_path]);
+    toast("削除しました");
+    reload();
+  }
+
+  renderComments();
+  return el("article", { class: "post" },
+    el("div", { class: "phead" }, el("div", { class: "avatar" }, [...who][0] || "?"), el("span", { class: "who" }, who)),
+    el("div", { class: "polaroid" },
+      el("div", { class: "media" }, media),
+      el("div", { class: "cap" }, fmt(p.taken_at), p.media_type === "video" ? el("span", { class: "vbadge" }, "🎬") : null)),
+    el("div", { class: "pact" },
+      el("span", {}, "💬 ", countEl),
+      el("span", { class: "sp" }),
+      el("button", { onclick: () => savePost(p, url, who) }, "⬇ 保存"),
+      canDelete ? el("button", { onclick: del }, "🗑 削除") : null),
+    clist, cform);
+}
+
+// ====== 保存 ======
+async function polaroidBlob(imgBlob, takenAt, who) {
+  const bmp = await createImageBitmap(imgBlob);
+  const W = 1200, P = 60, S = W - P * 2, H = P + S + 240;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fffdf8"; g.fillRect(0, 0, W, H);
+  g.drawImage(bmp, P, P, S, S);
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillStyle = "#4a4038";
+  g.font = '56px "Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif';
+  g.fillText(fmt(takenAt), W / 2, P + S + 95);
+  g.fillStyle = "#8a7e72";
+  g.font = "36px sans-serif";
+  g.fillText(who, W / 2, P + S + 170);
+  return await new Promise(r => c.toBlob(r, "image/png"));
+}
+function downloadBlob(blob, name) {
+  const a = el("a", { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+function askTapToSave(file) {
+  return new Promise(resolve => {
+    let overlay;
+    const done = () => { overlay.remove(); resolve(true); };
+    overlay = el("div", { class: "overlay" }, el("div", { class: "modal" },
+      el("h2", {}, "準備できました"),
+      el("button", {
+        class: "btn big",
+        onclick: async () => {
+          try { await navigator.share({ files: [file] }); }
+          catch (e) { if (e.name !== "AbortError") downloadBlob(file, file.name); }
+          done();
+        }
+      }, "保存する"),
+      el("button", { class: "btn ghost big", onclick: done }, "閉じる")));
+    document.body.append(overlay);
+  });
+}
+async function deliver(blob, filename) {
+  const file = new File([blob], filename, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; }
+    catch (e) {
+      if (e.name === "AbortError") return;
+      if (e.name === "NotAllowedError") { await askTapToSave(file); return; }
+      console.error(e);
+    }
+  }
+  downloadBlob(blob, filename);
+}
+async function savePost(p, url, who) {
+  if (!url) { toast("保存できませんでした"); return; }
+  toast("準備中…");
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    if (p.media_type === "photo") {
+      await deliver(await polaroidBlob(blob, p.taken_at, who), `pasha_${stamp(p.taken_at)}.png`);
+    } else {
+      const ext = (p.media_path.split(".").pop() || "mp4").toLowerCase();
+      const typed = blob.type ? blob : new Blob([blob], { type: ext === "webm" ? "video/webm" : "video/mp4" });
+      await deliver(typed, `pasha_${stamp(p.taken_at)}.${ext}`);
+    }
+  } catch (e) { console.error(e); toast("保存できませんでした"); }
+}
+
+// ====== カメラ ======
+function pickMime() {
+  if (!window.MediaRecorder) return "";
+  const c = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  return c.find(t => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+function openCamera(gid, onPosted) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("このブラウザではカメラが使えません（https が必要です）");
+    return;
+  }
+  let mode = "photo", facing = "environment", stream = null, rec = null, chunks = [], timer = null, busy = false, recording = false;
+
+  const video = el("video", { playsinline: true, muted: true, autoplay: true });
+  video.muted = true;
+  const timerLabel = el("div", { class: "timer", style: "display:none" }, "");
+  const busyLabel = el("div", { class: "busy", style: "display:none" }, "投稿中…");
+  const shutter = el("button", { class: "shutter", onclick: onShutter }, el("i"));
+  const btnPhoto = el("button", { class: "on", onclick: () => setMode("photo") }, "写真");
+  const btnVideo = el("button", { onclick: () => setMode("video") }, "動画");
+  const flip = el("button", { onclick: () => { facing = facing === "user" ? "environment" : "user"; startStream(); } }, "🔄 切替");
+
+  const overlay = el("div", { class: "cam" });
+  overlay.replaceChildren(
+    el("div", { class: "bar" }, el("button", { onclick: close }, "✕ 閉じる"), flip),
+    el("div", { class: "view" }, video, timerLabel, busyLabel),
+    el("div", { class: "modes" }, btnPhoto, btnVideo),
+    el("div", { class: "shutter-row" }, shutter)
+  );
+  document.body.append(overlay);
+  window.__camClose = close;
+  startStream();
+
+  function stopStream() {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  }
+  async function startStream() {
+    stopStream();
+    const base = { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 1280 } };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: base, audio: mode === "video" });
+    } catch (e) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: base, audio: false });
+        if (mode === "video") toast("マイクが使えないので音なしで撮影します");
+      } catch (e2) {
+        console.error(e2);
+        toast("カメラを使えませんでした。ブラウザの許可を確認してください");
+        close();
+        return;
+      }
+    }
+    video.srcObject = stream;
+    video.classList.toggle("mirror", facing === "user");
+    try { await video.play(); } catch {}
+  }
+  function setMode(m) {
+    if (recording || busy || m === mode) return;
+    mode = m;
+    btnPhoto.className = m === "photo" ? "on" : "";
+    btnVideo.className = m === "video" ? "on" : "";
+    shutter.className = "shutter" + (m === "video" ? " video" : "");
+    startStream();
+  }
+  function setBusy(b) {
+    busy = b;
+    busyLabel.style.display = b ? "flex" : "none";
+    shutter.disabled = b;
+  }
+  function close() {
+    clearInterval(timer);
+    try { if (rec && rec.state !== "inactive") { rec.onstop = null; rec.stop(); } } catch {}
+    stopStream();
+    overlay.remove();
+    window.__camClose = null;
+  }
+
+  async function upload(blob, type, takenAt, ext) {
+    setBusy(true);
+    try {
+      const path = `${gid}/${crypto.randomUUID()}.${ext}`;
+      const { error: ue } = await sb.storage.from("media").upload(path, blob, { contentType: blob.type, cacheControl: "3600" });
+      if (ue) throw ue;
+      const { error: pe } = await sb.from("posts").insert({ group_id: gid, media_path: path, media_type: type, taken_at: takenAt.toISOString() });
+      if (pe) { await sb.storage.from("media").remove([path]); throw pe; }
+      toast("投稿しました ✨");
+      onPosted();
+    } catch (e) {
+      console.error(e);
+      toast("投稿に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onShutter() {
+    if (busy) return;
+    if (mode === "photo") {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw) return;
+      const s = Math.min(vw, vh), out = Math.min(s, 1080);
+      const c = document.createElement("canvas");
+      c.width = c.height = out;
+      c.getContext("2d").drawImage(video, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, out, out);
+      const takenAt = new Date();
+      const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+      await upload(blob, "photo", takenAt, "jpg");
+    } else if (!recording) {
+      startRec();
+    } else {
+      stopRec();
+    }
+  }
+  function startRec() {
+    if (!window.MediaRecorder || !stream) { toast("このブラウザでは動画を撮れません"); return; }
+    const mime = pickMime();
+    try {
+      rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 2000000 } : { videoBitsPerSecond: 2000000 });
+    } catch (e) { console.error(e); toast("動画を開始できませんでした"); return; }
+    chunks = [];
+    const startedAt = new Date();
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(timer);
+      recording = false;
+      timerLabel.style.display = "none";
+      shutter.classList.remove("rec");
+      const type = ((rec && rec.mimeType) || mime || "video/mp4").split(";")[0];
+      const ext = type.includes("mp4") ? "mp4" : "webm";
+      const blob = new Blob(chunks, { type });
+      if (blob.size) await upload(blob, "video", startedAt, ext);
+    };
+    rec.start();
+    recording = true;
+    shutter.classList.add("rec");
+    let left = MAX_VIDEO_SEC;
+    timerLabel.style.display = "block";
+    timerLabel.textContent = `● 0:${String(left).padStart(2, "0")}`;
+    timer = setInterval(() => {
+      left--;
+      timerLabel.textContent = `● 0:${String(Math.max(left, 0)).padStart(2, "0")}`;
+      if (left <= 0) stopRec();
+    }, 1000);
+  }
+  function stopRec() {
+    clearInterval(timer);
+    if (rec && rec.state !== "inactive") rec.stop();
+  }
+}
+
+// ====== 起動 ======
+route();
+</script>
+</body>
+</html>
