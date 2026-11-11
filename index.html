@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="ぱしゃっと">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>ぱしゃっと</title>
 <style>
 :root{
@@ -621,6 +624,31 @@ async function groupPage(root, gid) {
       overlay.remove();
       route();
     }
+    async function deleteGroup() {
+      const r = await askForm("グループを削除",
+        [{ label: `削除すると、写真・動画・コメントもすべて消えて元に戻せません。確認のため、グループ名「${group.name}」をそのまま入力してください。`, max: 40, placeholder: group.name }],
+        "削除する", v => v[0] === group.name ? null : "グループ名が違います");
+      if (!r) return;
+      overlay.remove();
+      toast("削除中…");
+      try {
+        // 先に写真・動画のファイルを消す（グループが消えると、他の人のファイルを消せなくなるため）
+        const { data: ps, error: pe } = await sb.from("posts").select("media_path").eq("group_id", gid);
+        if (pe) throw pe;
+        const paths = (ps || []).map(p => p.media_path);
+        for (let i = 0; i < paths.length; i += 100) {
+          const { error } = await sb.storage.from("media").remove(paths.slice(i, i + 100));
+          if (error) throw error;
+        }
+        const { data, error } = await sb.from("groups").delete().eq("id", gid).select();
+        if (error || !data || !data.length) throw error || new Error("not deleted");
+        toast("グループを削除しました");
+        location.hash = "#/";
+      } catch (e) {
+        console.error(e);
+        toast("削除できませんでした。もう一度試してください");
+      }
+    }
     function render() {
       const addable = profiles.filter(p => !p.is_admin && !memberIds.has(p.user_id));
       const kids = [
@@ -638,6 +666,7 @@ async function groupPage(root, gid) {
         kids.push(el("button", { class: "btn ghost big", onclick: () => inviteShare(group) }, "🔗 招待リンクを共有"));
       }
       if (isOwner) kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
+      if (isOwner) kids.push(el("button", { class: "btn danger big", onclick: deleteGroup }, "🗑 このグループを削除する"));
       kids.push(el("button", { class: "btn big", onclick: () => overlay.remove() }, "閉じる"));
       body.replaceChildren(...kids);
     }
@@ -948,6 +977,9 @@ function openCamera(gid, onPosted) {
 }
 
 // ====== 起動 ======
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+}
 route();
 </script>
 </body>
