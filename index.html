@@ -25,6 +25,12 @@ a{color:inherit}
 .top h1{flex:1;margin:0;font-size:18px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top .icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:28px;text-decoration:none;background:none;border:0;cursor:pointer}
 .top .acts{display:flex;min-width:40px;justify-content:flex-end}
+.top .icon{position:relative}
+.badge{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#d64545;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.sect{margin:18px 0 4px;font-size:14px;font-weight:700}
+.addrow{display:flex;gap:8px;align-items:flex-end}
+.addrow input{margin-top:0}
+.addrow .btn{flex-shrink:0;height:46px}
 .wrap{max-width:520px;margin:0 auto;padding:14px 14px calc(120px + env(safe-area-inset-bottom))}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
@@ -292,6 +298,7 @@ async function route() {
         let m;
         if (hash === "#/settings") refresh = await settingsPage(root);
         else if (profile.is_admin) refresh = await adminPage(root);
+        else if (hash === "#/friends") refresh = await friendsPage(root);
         else if ((m = hash.match(/^#\/join\/(.+)$/))) refresh = await joinPage(root, m[1]);
         else if ((m = hash.match(/^#\/g\/([0-9a-fA-F-]+)$/))) refresh = await groupPage(root, m[1]);
         else refresh = await homePage(root);
@@ -478,6 +485,97 @@ async function adminPage(root) {
   return load;
 }
 
+// ====== フレンド ======
+async function friendsPage(root) {
+  const body = el("div");
+  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "友達のID", autocapitalize: "none", autocorrect: "off", spellcheck: "false" });
+
+  async function call(fn, okMsg) {
+    const { data, error } = await fn();
+    if (error) { toast(error.message); return null; }
+    if (okMsg) toast(okMsg);
+    await load();
+    return data;
+  }
+  async function send() {
+    const id = normId(idIn.value);
+    if (!ID_RE.test(id)) { toast("IDを入れてください（英小文字・数字・_）"); return; }
+    const { data, error } = await sb.rpc("send_friend_request", { p_login_id: id });
+    if (error) { toast(error.message); return; }
+    idIn.value = "";
+    toast({
+      sent: "フレンド申請を送りました",
+      accepted: "相手からも申請が来ていたので、フレンドになりました",
+      already_friends: "もうフレンドです",
+      already_pending: "もう申請を送っています"
+    }[data] || "完了しました");
+    load();
+  }
+
+  async function load() {
+    const [fr, bl, pr] = await Promise.all([
+      sb.from("friendships").select("*"),
+      sb.from("blocks").select("*"),
+      sb.from("profiles").select("user_id,login_id,display_name,is_admin")
+    ]);
+    if (fr.error) { body.replaceChildren(el("p", { class: "empty" }, "読み込めませんでした：" + fr.error.message)); return; }
+    const prof = Object.fromEntries((pr.data || []).map(p => [p.user_id, p]));
+    const other = f => (f.requester_id === me.id ? f.addressee_id : f.requester_id);
+    const incoming = (fr.data || []).filter(f => f.status === "pending" && f.addressee_id === me.id);
+    const outgoing = (fr.data || []).filter(f => f.status === "pending" && f.requester_id === me.id);
+    const friends = (fr.data || []).filter(f => f.status === "accepted");
+    const blocked = bl.data || [];
+
+    const person = id => {
+      const p = prof[id];
+      return el("div", { class: "who2" }, el("b", {}, p ? p.display_name : "？"), " ", el("small", {}, p ? "@" + p.login_id : ""));
+    };
+    const row = (id, ...btns) => el("div", { class: "rowi" }, person(id), el("div", { class: "ops" }, ...btns));
+    const name = id => (prof[id] ? prof[id].display_name : "この人");
+    const doBlock = id => {
+      if (!confirm(`${name(id)} さんをブロックしますか？\nフレンドから外れ、お互いに申請やグループへの追加ができなくなります。`)) return;
+      call(() => sb.rpc("block_user", { p_user: id }), "ブロックしました");
+    };
+
+    const kids = [];
+    kids.push(el("div", { class: "sect" }, `届いた申請${incoming.length ? "（" + incoming.length + "）" : ""}`));
+    kids.push(incoming.length
+      ? el("div", { class: "rows" }, incoming.map(f => row(f.requester_id,
+          el("button", { class: "btn sm", onclick: () => call(() => sb.rpc("respond_friend_request", { p_id: f.id, p_accept: true }), "フレンドになりました") }, "許可"),
+          el("button", { class: "btn ghost sm", onclick: () => call(() => sb.rpc("respond_friend_request", { p_id: f.id, p_accept: false }), "拒否しました") }, "拒否"),
+          el("button", { class: "btn danger sm", onclick: () => doBlock(f.requester_id) }, "ブロック"))))
+      : el("p", { class: "note", style: "margin-top:4px" }, "届いている申請はありません。"));
+
+    kids.push(el("div", { class: "sect" }, "フレンド"));
+    kids.push(friends.length
+      ? el("div", { class: "rows" }, friends.map(f => row(other(f),
+          el("button", { class: "btn ghost sm", onclick: () => { if (confirm(`${name(other(f))} さんをフレンドから外しますか？`)) call(() => sb.rpc("remove_friendship", { p_user: other(f) }), "フレンドを解除しました"); } }, "解除"),
+          el("button", { class: "btn danger sm", onclick: () => doBlock(other(f)) }, "ブロック"))))
+      : el("p", { class: "note", style: "margin-top:4px" }, "まだフレンドがいません。上でIDを入れて申請しよう。"));
+
+    if (outgoing.length) {
+      kids.push(el("div", { class: "sect" }, "送った申請（返事待ち）"));
+      kids.push(el("div", { class: "rows" }, outgoing.map(f => row(f.addressee_id,
+        el("button", { class: "btn ghost sm", onclick: () => call(() => sb.rpc("remove_friendship", { p_user: f.addressee_id }), "取り消しました") }, "取り消し")))));
+    }
+    if (blocked.length) {
+      kids.push(el("div", { class: "sect" }, "ブロック中"));
+      kids.push(el("div", { class: "rows" }, blocked.map(b => row(b.blocked_id,
+        el("button", { class: "btn ghost sm", onclick: () => call(() => sb.rpc("unblock_user", { p_user: b.blocked_id }), "ブロックを解除しました") }, "解除")))));
+    }
+    body.replaceChildren(...kids);
+  }
+
+  root.append(topbar("フレンド", { back: true }), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("h2", {}, "フレンドを追加"),
+      el("div", { class: "addrow" }, el("label", { style: "flex:1;margin:0" }, "相手のID", idIn), el("button", { class: "btn", onclick: send }, "申請")),
+      el("p", { class: "note" }, "相手が許可すると、フレンドになります。フレンドになった人を、グループに追加できます。")),
+    body));
+  await load();
+  return load;
+}
+
 // ====== ホーム ======
 function installTip() {
   const standalone = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
@@ -493,9 +591,16 @@ async function homePage(root) {
   if (error) throw error;
   const active = groups.filter(g => !g.archived);
   const archived = groups.filter(g => g.archived);
+  // 届いているフレンド申請の数（バッジ用。取れなくてもホームは表示する）
+  let pending = 0;
+  try {
+    const { data: fr } = await sb.from("friendships").select("id").eq("addressee_id", me.id).eq("status", "pending");
+    pending = (fr || []).length;
+  } catch {}
+  const friendsLink = el("a", { class: "icon", href: "#/friends", title: "フレンド", style: "font-size:22px" }, "👫", pending ? el("span", { class: "badge" }, pending) : null);
   const card = (g, cls) => el("a", { class: "gcard" + (cls ? " " + cls : ""), href: "#/g/" + g.id }, el("span", { class: "gname" }, g.name), el("span", { class: "chev" }, "›"));
   root.append(
-    topbar(APP_NAME, { actions: [gearLink()] }),
+    topbar(APP_NAME, { actions: [friendsLink, gearLink()] }),
     el("main", { class: "wrap" },
       installTip(),
       active.length
@@ -555,11 +660,13 @@ async function inviteShare(group) {
 }
 
 async function groupPage(root, gid) {
-  const [gr, mr, pr] = await Promise.all([
+  const [gr, mr, pr, fr] = await Promise.all([
     sb.from("groups").select("*").eq("id", gid).maybeSingle(),
     sb.from("members").select("user_id").eq("group_id", gid),
-    sb.from("profiles").select("user_id,login_id,display_name,is_admin")
+    sb.from("profiles").select("user_id,login_id,display_name,is_admin"),
+    sb.from("friendships").select("requester_id,addressee_id").eq("status", "accepted")
   ]);
+  const friendIds = new Set((fr.data || []).map(f => (f.requester_id === me.id ? f.addressee_id : f.requester_id)));
   const group = gr.data;
   if (gr.error || !group) {
     root.append(topbar(APP_NAME, { back: true }), el("main", { class: "wrap" },
@@ -650,19 +757,19 @@ async function groupPage(root, gid) {
       }
     }
     function render() {
-      const addable = profiles.filter(p => !p.is_admin && !memberIds.has(p.user_id));
+      const addable = profiles.filter(p => !p.is_admin && friendIds.has(p.user_id) && !memberIds.has(p.user_id));
       const kids = [
         el("h2", {}, group.name),
         el("div", { class: "sub" }, `メンバー（${memberIds.size}人）`),
         el("div", { class: "chips" }, [...memberIds].map(id => el("span", { class: "chip" }, names[id] || "?")))
       ];
       if (!archived) {
-        kids.push(el("div", { class: "sub", style: "margin-top:16px" }, "友達を追加（リンクなしで招待）"));
+        kids.push(el("div", { class: "sub", style: "margin-top:16px" }, "フレンドを追加（リンクなしで招待）"));
         kids.push(addable.length
           ? el("div", { class: "rows" }, addable.map(p => el("div", { class: "rowi" },
               el("div", { class: "who2" }, p.display_name, " ", el("small", {}, "@" + p.login_id)),
               el("button", { class: "btn sm", onclick: () => addFriend(p) }, "追加"))))
-          : el("p", { class: "note" }, "追加できる友達がいません。"));
+          : el("p", { class: "note" }, "追加できるフレンドがいません。", el("a", { href: "#/friends", style: "color:var(--accent);font-weight:700", onclick: () => overlay.remove() }, "フレンド画面で申請する")));
         kids.push(el("button", { class: "btn ghost big", onclick: () => inviteShare(group) }, "🔗 招待リンクを共有"));
       }
       if (isOwner) kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
