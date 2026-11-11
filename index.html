@@ -25,6 +25,8 @@ a{color:inherit}
 .wrap{max-width:520px;margin:0 auto;padding:14px 14px calc(120px + env(safe-area-inset-bottom))}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:#d64545}
+.btn.sm{padding:6px 12px;font-size:13px}
 .btn.big{width:100%;padding:14px;font-size:16px;margin-top:12px}
 .btn:disabled{opacity:.5}
 .glist{display:flex;flex-direction:column;gap:10px}
@@ -32,13 +34,30 @@ a{color:inherit}
 .gname{font-weight:700;font-size:16px}
 .chev{font-size:24px;color:var(--sub)}
 .empty{text-align:center;color:var(--sub);padding:36px 12px;line-height:1.8}
-.note{color:var(--sub);font-size:12px;line-height:1.7;margin-top:18px}
+.note{color:var(--sub);font-size:12px;line-height:1.7;margin-top:14px}
+.sub{color:var(--sub);font-size:13px}
 .tip{display:flex;gap:8px;align-items:flex-start;background:#fff0d9;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:12px}
 .tip button{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;color:var(--sub)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card + .card{margin-top:14px}
 .card h2{margin:4px 0 12px}
 label{display:block;font-size:13px;color:var(--sub);margin:10px 0 0}
-input[type=text]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+input[type=text],input[type=password]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+.tabs{display:flex;gap:8px;margin-bottom:4px}
+.tabs button{flex:1;padding:10px;border-radius:999px;border:1px solid var(--line);background:transparent;font-weight:700;cursor:pointer}
+.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.rows{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.rowi{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.rowi .who2{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rowi small{color:var(--sub)}
+.rowi .ops{display:flex;gap:6px;flex-shrink:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{background:#fff0d9;border-radius:999px;padding:4px 10px;font-size:13px}
+.banner{background:#efe7dc;border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:14px;text-align:center;line-height:1.6}
+details.arch{margin-top:20px}
+details.arch summary{cursor:pointer;color:var(--sub);font-size:14px;padding:6px 2px}
+details.arch .glist{margin-top:8px}
+.gcard.arc{opacity:.75}
 
 /* feed */
 .feed{display:flex;flex-direction:column;gap:26px}
@@ -69,7 +88,7 @@ input[type=text]{display:block;width:100%;margin-top:6px;padding:12px;border:1px
 
 /* modal & toast */
 .overlay{position:fixed;inset:0;z-index:100;background:rgba(40,28,20,.5);display:flex;align-items:center;justify-content:center;padding:20px}
-.modal{width:100%;max-width:380px;background:var(--card);border-radius:18px;padding:20px}
+.modal{width:100%;max-width:380px;max-height:90dvh;overflow:auto;background:var(--card);border-radius:18px;padding:20px}
 .modal h2{margin:0 0 6px;font-size:18px}
 .modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
 .toast{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:200;background:rgba(40,28,20,.9);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;max-width:90vw;text-align:center}
@@ -99,9 +118,12 @@ input[type=text]{display:block;width:100%;margin-top:6px;padding:12px;border:1px
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-// ====== 設定（Supabaseの値をここに貼る） ======
+// ====== 設定 ======
 const SUPABASE_URL = "https://krkpgjuxrlhllttluinr.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_E7OTdMtaDP9O6RkIoumsyQ_Ieefp72J";
+// IDを「ID@このドメイン」というメール形式に変換して使います（メールは送られません。
+// Supabaseの「Confirm email」をOFFにしている前提です）
+const EMAIL_DOMAIN = "gmail.com";
 const MAX_VIDEO_SEC = 15;
 const APP_NAME = "ぱしゃっと";
 
@@ -128,7 +150,7 @@ function el(tag, props, ...kids) {
 function toast(msg) {
   const t = el("div", { class: "toast" }, msg);
   document.body.append(t);
-  setTimeout(() => t.remove(), 2400);
+  setTimeout(() => t.remove(), 2600);
 }
 function fmt(d) {
   d = new Date(d);
@@ -136,10 +158,28 @@ function fmt(d) {
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function stamp(d) { return fmt(d).replace(/[. :]/g, ""); }
+const normId = s => String(s || "").trim().toLowerCase();
+const ID_RE = /^[a-z0-9_]{3,20}$/;
+const PW_RE = /^\d{6}$/;
+const toEmail = id => `${id}@${EMAIL_DOMAIN}`;
 
-function askForm(title, fields, okLabel = "OK") {
+function pwInput(placeholder, autocomplete = "off") {
+  return el("input", {
+    type: "password", inputmode: "numeric", maxlength: 6, placeholder, autocomplete,
+    oninput: e => { e.target.value = e.target.value.replace(/\D/g, ""); }
+  });
+}
+
+// fields: [{label, max, placeholder, value, type, inputmode, digits}]
+// validate(vals) が文字列を返したらエラー表示して閉じない
+function askForm(title, fields, okLabel = "OK", validate) {
   return new Promise(resolve => {
-    const inputs = fields.map(f => el("input", { type: "text", maxlength: f.max || 30, placeholder: f.placeholder || "", value: f.value || "" }));
+    const inputs = fields.map(f => el("input", {
+      type: f.type || "text", inputmode: f.inputmode, maxlength: f.max || 30,
+      placeholder: f.placeholder || "", value: f.value || "", autocomplete: "off",
+      autocapitalize: "none", autocorrect: "off", spellcheck: "false",
+      oninput: f.digits ? (e => { e.target.value = e.target.value.replace(/\D/g, ""); }) : null
+    }));
     let overlay;
     const close = val => { overlay.remove(); resolve(val); };
     const form = el("form", {
@@ -148,6 +188,8 @@ function askForm(title, fields, okLabel = "OK") {
         e.preventDefault();
         const vals = inputs.map(i => i.value.trim());
         if (vals.some(v => !v)) { toast("入力してください"); return; }
+        const err = validate && validate(vals);
+        if (err) { toast(err); return; }
         close(vals);
       }
     },
@@ -170,49 +212,268 @@ function topbar(title, opts = {}) {
     el("div", { class: "acts" }, ...(opts.actions || []))
   );
 }
+const gearLink = () => el("a", { class: "icon", href: "#/settings", title: "設定", style: "font-size:22px" }, "⚙");
 
-// ====== Supabase ======
+// ====== Supabase / ログイン状態 ======
 const configured = !SUPABASE_URL.startsWith("YOUR_");
 const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
-let me = null;
+let me = null;        // ログイン中のユーザー
+let profile = null;   // {user_id, login_id, display_name, is_admin}
 let refreshHook = null;
+let quietSignOut = false;
+let routeSeq = 0;
 
-async function ensureUser() {
-  let { data: { session } } = await sb.auth.getSession();
-  if (!session) {
-    const { data, error } = await sb.auth.signInAnonymously();
-    if (error) throw error;
-    session = data.session;
-  }
-  me = session.user;
+if (sb) {
+  sb.auth.onAuthStateChange(event => {
+    if (event === "SIGNED_OUT" && !quietSignOut) {
+      me = null; profile = null;
+      setTimeout(route, 0);
+    }
+  });
+}
+
+async function loadSession() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return false;
+  const bad = async () => {
+    quietSignOut = true;
+    try { await sb.auth.signOut(); } finally { quietSignOut = false; }
+    return false;
+  };
+  if (session.user.is_anonymous) return await bad();
+  const { data: p } = await sb.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle();
+  if (!p) return await bad();
+  me = session.user; profile = p;
+  return true;
+}
+
+async function doLogin(id, pw) {
+  const { error } = await sb.auth.signInWithPassword({ email: toEmail(id), password: pw });
+  if (error) throw error;
+}
+async function doRegister(id, name, pw) {
+  const { data, error } = await sb.auth.signUp({ email: toEmail(id), password: pw, options: { data: { display_name: name } } });
+  if (error) throw error;
+  if (!data.session) throw new Error("CONFIRM_ON");
+}
+function authMessage(err) {
+  const m = String((err && err.message) || err);
+  if (m === "CONFIRM_ON") return "設定が足りません：Supabaseの「Confirm email」をOFFにしてください";
+  if (/Invalid login credentials/i.test(m)) return "IDかパスワードが違います";
+  if (/already registered|already been registered|user_already_exists/i.test(m)) return "このIDはもう登録されています。ログインしてください";
+  if (/Database error/i.test(m)) return "このIDは発行されていません。管理者に確認してください";
+  if (/rate limit|too many/i.test(m)) return "試行回数が多すぎます。少し待ってからやり直してください";
+  return "うまくいきませんでした：" + m;
 }
 
 // ====== ルーター ======
 async function route() {
+  const my = ++routeSeq;
   refreshHook = null;
   if (window.__camClose) window.__camClose();
-  const app = $("#app");
-  app.replaceChildren();
+  const root = el("div");
+  let refresh;
   if (!configured) {
-    app.append(topbar(APP_NAME), el("main", { class: "wrap" }, el("p", { class: "empty" }, "まだ設定が終わっていません。", el("br"), "index.html の SUPABASE_URL と SUPABASE_ANON_KEY を設定してください。")));
-    return;
+    root.append(topbar(APP_NAME), el("main", { class: "wrap" }, el("p", { class: "empty" }, "まだ設定が終わっていません。")));
+  } else {
+    try {
+      if (!(me && profile)) {
+        const ok = await loadSession();
+        if (my !== routeSeq) return;
+        if (!ok) { me = null; profile = null; }
+      }
+      if (!(me && profile)) {
+        loginPage(root);
+      } else {
+        const hash = location.hash || "#/";
+        let m;
+        if (hash === "#/settings") refresh = await settingsPage(root);
+        else if (profile.is_admin) refresh = await adminPage(root);
+        else if ((m = hash.match(/^#\/join\/(.+)$/))) refresh = await joinPage(root, m[1]);
+        else if ((m = hash.match(/^#\/g\/([0-9a-fA-F-]+)$/))) refresh = await groupPage(root, m[1]);
+        else refresh = await homePage(root);
+      }
+    } catch (e) {
+      console.error(e);
+      root.replaceChildren(topbar(APP_NAME), el("main", { class: "wrap" },
+        el("p", { class: "empty" }, "うまく読み込めませんでした。", el("br"), String(e.message || e)),
+        el("button", { class: "btn big", onclick: () => location.reload() }, "再読み込み")));
+    }
   }
-  try {
-    if (!me) await ensureUser();
-    const hash = location.hash || "#/";
-    let m;
-    if ((m = hash.match(/^#\/join\/(.+)$/))) await joinPage(m[1]);
-    else if ((m = hash.match(/^#\/g\/([0-9a-fA-F-]+)$/))) await groupPage(m[1]);
-    else await homePage();
-  } catch (e) {
-    console.error(e);
-    app.replaceChildren(topbar(APP_NAME), el("main", { class: "wrap" },
-      el("p", { class: "empty" }, "うまく読み込めませんでした。", el("br"), String(e.message || e)),
-      el("button", { class: "btn big", onclick: () => location.reload() }, "再読み込み")));
-  }
+  if (my !== routeSeq) return;
+  $("#app").replaceChildren(root);
+  refreshHook = refresh || null;
+  window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", route);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && refreshHook) refreshHook(); });
+
+// ====== ログイン / 登録 ======
+function loginPage(root) {
+  let mode = "login";
+  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "例：taro", autocapitalize: "none", autocorrect: "off", spellcheck: "false", autocomplete: "username" });
+  const nameIn = el("input", { type: "text", maxlength: 20, placeholder: "みんなに表示される名前", autocomplete: "off" });
+  const pwIn = pwInput("6桁の数字", "current-password");
+  const pw2In = pwInput("もう一度入れてください");
+  const nameLabel = el("label", {}, "あなたの名前", nameIn);
+  const pw2Label = el("label", {}, "パスワードの確認", pw2In);
+  const btn = el("button", { class: "btn big", type: "submit" }, "ログイン");
+  const hint = el("p", { class: "note" }, "");
+  const tLogin = el("button", { type: "button", class: "on", onclick: () => setMode("login") }, "ログイン");
+  const tReg = el("button", { type: "button", onclick: () => setMode("register") }, "はじめて登録");
+
+  function setMode(m) {
+    mode = m;
+    tLogin.className = m === "login" ? "on" : "";
+    tReg.className = m === "register" ? "on" : "";
+    nameLabel.style.display = pw2Label.style.display = m === "register" ? "block" : "none";
+    btn.textContent = m === "register" ? "登録してはじめる" : "ログイン";
+    pwIn.setAttribute("autocomplete", m === "register" ? "new-password" : "current-password");
+    hint.textContent = m === "register"
+      ? "管理者から教えてもらったIDを入れて、自分で決めた6桁の数字をパスワードにしてください。パスワードは忘れないようにメモしておいてください。"
+      : "パスワードを忘れたときは、管理者に再設定を頼んでください。";
+  }
+
+  const form = el("form", {
+    class: "card",
+    onsubmit: async e => {
+      e.preventDefault();
+      const id = normId(idIn.value), pw = pwIn.value, name = nameIn.value.trim();
+      if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
+      if (!PW_RE.test(pw)) { toast("パスワードは6桁の数字です"); return; }
+      if (mode === "register") {
+        if (!name) { toast("名前を入れてください"); return; }
+        if (pw !== pw2In.value) { toast("パスワードが一致しません"); return; }
+      }
+      btn.disabled = true;
+      try {
+        if (mode === "login") await doLogin(id, pw); else await doRegister(id, name, pw);
+        me = null; profile = null;
+        route();
+      } catch (err) {
+        console.error(err);
+        toast(authMessage(err));
+        btn.disabled = false;
+      }
+    }
+  },
+    el("div", { class: "tabs" }, tLogin, tReg),
+    el("label", {}, "ID", idIn),
+    nameLabel,
+    el("label", {}, "パスワード（6桁の数字）", pwIn),
+    pw2Label,
+    btn,
+    hint
+  );
+  setMode("login");
+  root.append(topbar(APP_NAME), el("main", { class: "wrap" },
+    el("p", { class: "empty", style: "padding:18px 12px 8px" }, "友達とだけ共有する、思い出カメラ📷"),
+    form));
+}
+
+async function logout() {
+  await sb.auth.signOut();
+}
+
+// ====== 設定 ======
+async function settingsPage(root) {
+  const nameIn = el("input", { type: "text", maxlength: 20, value: profile.display_name });
+  const pw1 = pwInput("新しい6桁の数字", "new-password");
+  const pw2 = pwInput("もう一度入れてください");
+  const saveName = el("button", {
+    class: "btn big",
+    onclick: async () => {
+      const n = nameIn.value.trim();
+      if (!n) { toast("名前を入れてください"); return; }
+      const { error } = await sb.rpc("update_my_name", { p_name: n });
+      if (error) { toast("変更できませんでした"); return; }
+      profile.display_name = n.slice(0, 20);
+      toast("名前を変更しました");
+    }
+  }, "名前を保存");
+  const savePw = el("button", {
+    class: "btn big",
+    onclick: async () => {
+      if (!PW_RE.test(pw1.value)) { toast("パスワードは6桁の数字です"); return; }
+      if (pw1.value !== pw2.value) { toast("パスワードが一致しません"); return; }
+      const { error } = await sb.auth.updateUser({ password: pw1.value });
+      if (error) { toast(/different/i.test(error.message) ? "今のパスワードと違う数字にしてください" : "変更できませんでした：" + error.message); return; }
+      pw1.value = pw2.value = "";
+      toast("パスワードを変更しました。忘れないようにメモしてください");
+    }
+  }, "パスワードを変更");
+
+  root.append(topbar("設定", { back: true }), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("div", { class: "sub" }, "ログイン中のID"),
+      el("h2", {}, "@" + profile.login_id),
+      el("label", {}, "名前", nameIn), saveName),
+    el("div", { class: "card" },
+      el("h2", {}, "パスワードを変える"),
+      el("label", {}, "新しいパスワード（6桁の数字）", pw1),
+      el("label", {}, "もう一度", pw2), savePw),
+    el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+}
+
+// ====== 管理者 ======
+async function adminPage(root) {
+  const list = el("div", { class: "rows" });
+  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "例：taro", autocapitalize: "none", autocorrect: "off", spellcheck: "false" });
+
+  async function resetPw(u) {
+    const r = await askForm("パスワードの再設定",
+      [{ label: `@${u.login_id} の新しいパスワード（6桁の数字）`, max: 6, inputmode: "numeric", digits: true }],
+      "再設定", v => PW_RE.test(v[0]) ? null : "6桁の数字にしてください");
+    if (!r) return;
+    const { error } = await sb.rpc("admin_reset_password", { p_login_id: u.login_id, p_password: r[0] });
+    if (error) { toast(error.message); return; }
+    alert(`@${u.login_id} のパスワードを ${r[0]} に変更しました。\n本人に伝えてください。`);
+  }
+  async function delId(u) {
+    const msg = u.registered
+      ? `@${u.login_id}（${u.display_name}）を削除しますか？\nこの人はログインできなくなります。投稿した写真は残ります。`
+      : `@${u.login_id} の発行を取り消しますか？`;
+    if (!confirm(msg)) return;
+    const { error } = await sb.rpc("admin_delete_id", { p_login_id: u.login_id });
+    if (error) { toast(error.message); return; }
+    toast("削除しました");
+    load();
+  }
+  function rowFor(u) {
+    return el("div", { class: "rowi" },
+      el("div", { class: "who2" }, el("b", {}, "@" + u.login_id), " ",
+        u.registered ? el("small", {}, u.display_name) : el("small", {}, "（まだ登録していません）")),
+      el("div", { class: "ops" },
+        u.registered ? el("button", { class: "btn ghost sm", onclick: () => resetPw(u) }, "再設定") : null,
+        el("button", { class: "btn danger sm", onclick: () => delId(u) }, "削除")));
+  }
+  async function load() {
+    const { data, error } = await sb.rpc("admin_list_users");
+    if (error) { list.replaceChildren(el("p", { class: "empty" }, error.message)); return; }
+    list.replaceChildren(...(data.length ? data.map(rowFor) : [el("p", { class: "empty" }, "まだIDを発行していません")]));
+  }
+  async function issue() {
+    const id = normId(idIn.value);
+    if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
+    const { error } = await sb.rpc("admin_issue_id", { p_login_id: id });
+    if (error) { toast(/duplicate|already/i.test(error.message) ? "そのIDはもう発行済みです" : error.message); return; }
+    idIn.value = "";
+    toast(`@${id} を発行しました。友達にIDを伝えてください`);
+    load();
+  }
+
+  root.append(topbar("管理者", { actions: [gearLink()] }), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("h2", {}, "IDを発行する"),
+      el("label", {}, "新しいID（英小文字・数字・_ の3〜20文字）", idIn),
+      el("button", { class: "btn big", onclick: issue }, "発行する"),
+      el("p", { class: "note" }, "発行したIDを友達に伝えると、友達が自分でパスワードを決めて登録できます。")),
+    el("div", { class: "card" },
+      el("h2", {}, "発行したID"),
+      list)));
+  await load();
+  return load;
+}
 
 // ====== ホーム ======
 function installTip() {
@@ -224,64 +485,57 @@ function installTip() {
   return box;
 }
 
-async function homePage() {
-  const app = $("#app");
-  const { data: groups, error } = await sb.from("groups").select("id,name,created_at").order("created_at", { ascending: false });
+async function homePage(root) {
+  const { data: groups, error } = await sb.from("groups").select("id,name,archived,created_at").order("created_at", { ascending: false });
   if (error) throw error;
-  app.append(
-    topbar(APP_NAME),
+  const active = groups.filter(g => !g.archived);
+  const archived = groups.filter(g => g.archived);
+  const card = (g, cls) => el("a", { class: "gcard" + (cls ? " " + cls : ""), href: "#/g/" + g.id }, el("span", { class: "gname" }, g.name), el("span", { class: "chev" }, "›"));
+  root.append(
+    topbar(APP_NAME, { actions: [gearLink()] }),
     el("main", { class: "wrap" },
       installTip(),
-      groups.length
-        ? el("div", { class: "glist" }, groups.map(g => el("a", { class: "gcard", href: "#/g/" + g.id }, el("span", { class: "gname" }, g.name), el("span", { class: "chev" }, "›"))))
-        : el("p", { class: "empty" }, "まだグループがありません。", el("br"), "グループを作って、友達に招待リンクを送ろう！"),
+      active.length
+        ? el("div", { class: "glist" }, active.map(g => card(g)))
+        : el("p", { class: "empty" }, "まだグループがありません。", el("br"), "グループを作って、友達を招待しよう！"),
       el("button", { class: "btn big", onclick: createGroup }, "＋ グループを作る"),
-      el("p", { class: "note" }, "※ ログイン不要で、この端末のブラウザがあなたとして記憶されます。ブラウザのデータを消したり機種変更したりした場合は、招待リンクからもう一度参加してください。")
+      archived.length ? el("details", { class: "arch" }, el("summary", {}, `アーカイブ済み（${archived.length}）`), el("div", { class: "glist" }, archived.map(g => card(g, "arc")))) : null
     )
   );
 }
 
 async function createGroup() {
-  const r = await askForm("新しいグループ", [
-    { label: "グループ名", max: 40, placeholder: "例：週末あそび隊" },
-    { label: "あなたの名前", max: 20, value: store.get("myname") || "" }
-  ], "作成");
+  const r = await askForm("新しいグループ", [{ label: "グループ名", max: 40, placeholder: "例：週末あそび隊" }], "作成");
   if (!r) return;
-  store.set("myname", r[1]);
-  const { data, error } = await sb.rpc("create_group", { p_name: r[0], p_display: r[1] });
+  const { data, error } = await sb.rpc("create_group", { p_name: r[0] });
   if (error) { console.error(error); toast("作成できませんでした"); return; }
   location.hash = "#/g/" + data;
 }
 
 // ====== 招待リンクから参加 ======
-async function joinPage(code) {
-  const app = $("#app");
+async function joinPage(root, code) {
   const { data, error } = await sb.rpc("preview_group", { p_code: code });
   const g = data && data[0];
-  if (error || !g) {
-    app.append(topbar(APP_NAME), el("main", { class: "wrap" },
-      el("p", { class: "empty" }, "この招待リンクは無効です。"),
+  if (error || !g || g.archived) {
+    root.append(topbar(APP_NAME), el("main", { class: "wrap" },
+      el("p", { class: "empty" }, g && g.archived ? "このグループはアーカイブされています。" : "この招待リンクは無効です。"),
       el("a", { class: "btn big", href: "#/" }, "ホームへ")));
     return;
   }
-  const input = el("input", { type: "text", maxlength: 20, placeholder: "みんなに表示される名前", value: store.get("myname") || "" });
   const btn = el("button", {
     class: "btn big",
     onclick: async () => {
-      const name = input.value.trim();
-      if (!name) { toast("名前を入れてください"); return; }
       btn.disabled = true;
-      store.set("myname", name);
-      const { data: gid, error: je } = await sb.rpc("join_group", { p_code: code, p_display: name });
+      const { data: gid, error: je } = await sb.rpc("join_group", { p_code: code });
       if (je) { console.error(je); toast("参加できませんでした"); btn.disabled = false; return; }
       location.hash = "#/g/" + gid;
     }
   }, "参加する");
-  app.append(topbar(APP_NAME), el("main", { class: "wrap" },
+  root.append(topbar(APP_NAME), el("main", { class: "wrap" },
     el("div", { class: "card" },
-      el("div", { style: "color:var(--sub);font-size:13px" }, "招待されたグループ"),
+      el("div", { class: "sub" }, "招待されたグループ"),
       el("h2", {}, g.name),
-      el("label", {}, "あなたの名前", input),
+      el("div", { class: "sub" }, `${profile.display_name} さんとして参加します`),
       btn)));
 }
 
@@ -297,21 +551,24 @@ async function inviteShare(group) {
   catch { prompt("招待リンク", url); }
 }
 
-async function groupPage(gid) {
-  const app = $("#app");
-  const [gr, mr] = await Promise.all([
+async function groupPage(root, gid) {
+  const [gr, mr, pr] = await Promise.all([
     sb.from("groups").select("*").eq("id", gid).maybeSingle(),
-    sb.from("members").select("user_id,display_name").eq("group_id", gid)
+    sb.from("members").select("user_id").eq("group_id", gid),
+    sb.from("profiles").select("user_id,login_id,display_name,is_admin")
   ]);
   const group = gr.data;
   if (gr.error || !group) {
-    app.append(topbar(APP_NAME, { back: true }), el("main", { class: "wrap" },
+    root.append(topbar(APP_NAME, { back: true }), el("main", { class: "wrap" },
       el("p", { class: "empty" }, "このグループが見つからないか、参加していません。"),
       el("a", { class: "btn big", href: "#/" }, "ホームへ")));
     return;
   }
-  const names = Object.fromEntries((mr.data || []).map(m => [m.user_id, m.display_name]));
+  const profiles = pr.data || [];
+  const names = Object.fromEntries(profiles.map(p => [p.user_id, p.display_name]));
+  const memberIds = new Set((mr.data || []).map(m => m.user_id));
   const isOwner = group.owner_id === me.id;
+  const archived = !!group.archived;
   let limit = 20;
   const feed = el("div", { class: "feed" });
 
@@ -332,34 +589,85 @@ async function groupPage(gid) {
       (s.data || []).forEach(x => { if (x.path && x.signedUrl) urls[x.path] = x.signedUrl; });
     }
     if (!posts.length) {
-      feed.replaceChildren(el("p", { class: "empty" }, "まだ投稿がありません。", el("br"), "下のカメラボタンで最初の1枚を撮ろう📷"));
+      feed.replaceChildren(el("p", { class: "empty" }, archived ? "投稿はありません。" : "まだ投稿がありません。", archived ? null : [el("br"), "下のカメラボタンで最初の1枚を撮ろう📷"]));
       return;
     }
+    const ctx = { names, isOwner, archived, reload: loadFeed };
     feed.replaceChildren(
-      posts.map(p => postCard(p, comments.filter(c => c.post_id === p.id), urls[p.media_path], names, isOwner, loadFeed)),
-      more ? el("button", { class: "btn ghost", onclick: () => { limit += 20; loadFeed(); } }, "もっと見る") : null
+      ...posts.map(p => postCard(p, comments.filter(c => c.post_id === p.id), urls[p.media_path], ctx)),
+      ...(more ? [el("button", { class: "btn ghost", onclick: () => { limit += 20; loadFeed(); } }, "もっと見る")] : [])
     );
   }
 
-  refreshHook = loadFeed;
-  app.append(
+  // メンバー・友達追加・アーカイブのシート
+  function openMembers() {
+    let overlay;
+    const body = el("div", { class: "modal" });
+    async function addFriend(p) {
+      const { error } = await sb.rpc("add_member", { p_gid: gid, p_user: p.user_id });
+      if (error) { toast(error.message); return; }
+      memberIds.add(p.user_id);
+      toast(`${p.display_name} さんを追加しました`);
+      render();
+    }
+    async function toggleArchive() {
+      const next = !archived;
+      const msg = next
+        ? "このグループをアーカイブしますか？\n・新しい投稿やコメントはできなくなります\n・投稿やコメントを削除できるのは、グループを作った人だけになります\n（あとで解除できます）"
+        : "アーカイブを解除しますか？";
+      if (!confirm(msg)) return;
+      const { error } = await sb.rpc("set_group_archived", { p_gid: gid, p_flag: next });
+      if (error) { toast(error.message); return; }
+      overlay.remove();
+      route();
+    }
+    function render() {
+      const addable = profiles.filter(p => !p.is_admin && !memberIds.has(p.user_id));
+      const kids = [
+        el("h2", {}, group.name),
+        el("div", { class: "sub" }, `メンバー（${memberIds.size}人）`),
+        el("div", { class: "chips" }, [...memberIds].map(id => el("span", { class: "chip" }, names[id] || "?")))
+      ];
+      if (!archived) {
+        kids.push(el("div", { class: "sub", style: "margin-top:16px" }, "友達を追加（リンクなしで招待）"));
+        kids.push(addable.length
+          ? el("div", { class: "rows" }, addable.map(p => el("div", { class: "rowi" },
+              el("div", { class: "who2" }, p.display_name, " ", el("small", {}, "@" + p.login_id)),
+              el("button", { class: "btn sm", onclick: () => addFriend(p) }, "追加"))))
+          : el("p", { class: "note" }, "追加できる友達がいません。"));
+        kids.push(el("button", { class: "btn ghost big", onclick: () => inviteShare(group) }, "🔗 招待リンクを共有"));
+      }
+      if (isOwner) kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
+      kids.push(el("button", { class: "btn big", onclick: () => overlay.remove() }, "閉じる"));
+      body.replaceChildren(...kids);
+    }
+    render();
+    overlay = el("div", { class: "overlay", onclick: e => { if (e.target === overlay) overlay.remove(); } }, body);
+    document.body.append(overlay);
+  }
+
+  root.append(
     topbar(group.name, {
       back: true,
       actions: [
         el("button", { class: "icon", title: "更新", style: "font-size:20px", onclick: () => { loadFeed(); toast("更新しました"); } }, "↻"),
-        el("button", { class: "icon", title: "招待", style: "font-size:20px", onclick: () => inviteShare(group) }, "👥")
+        el("button", { class: "icon", title: "メンバー", style: "font-size:20px", onclick: openMembers }, "👥")
       ]
     }),
-    el("main", { class: "wrap" }, feed),
-    el("button", { class: "fab", title: "撮影", onclick: () => openCamera(gid, loadFeed) }, "📷")
+    el("main", { class: "wrap" },
+      archived ? el("div", { class: "banner" }, "🗄 このグループはアーカイブ済みです。見るのと保存だけできます。", el("br"), "削除はグループを作った人だけができます。") : null,
+      feed),
+    ...(archived ? [] : [el("button", { class: "fab", title: "撮影", onclick: () => openCamera(gid, loadFeed) }, "📷")])
   );
   await loadFeed();
+  return loadFeed;
 }
 
-function postCard(p, initialComments, url, names, isOwner, reload) {
+function postCard(p, initialComments, url, ctx) {
+  const { names, isOwner, archived, reload } = ctx;
   const mine = p.user_id === me.id;
-  const canDelete = mine || isOwner;
-  const who = names[p.user_id] || "退出したメンバー";
+  const canDelete = isOwner || (mine && !archived);
+  const who = (p.user_id && names[p.user_id]) || "削除されたユーザー";
   const list = [...initialComments];
   const media = p.media_type === "video"
     ? el("video", { src: url ? url + "#t=0.1" : "", controls: true, playsinline: true, preload: "metadata" })
@@ -367,11 +675,12 @@ function postCard(p, initialComments, url, names, isOwner, reload) {
 
   const clist = el("div", { class: "comments" });
   const countEl = el("span", {}, "");
+  const canDelComment = c => isOwner || (c.user_id === me.id && !archived);
   function renderComments() {
-    clist.replaceChildren(list.map(c => el("div", { class: "cm" },
-      el("b", {}, names[c.user_id] || "退出したメンバー"),
+    clist.replaceChildren(...list.map(c => el("div", { class: "cm" },
+      el("b", {}, (c.user_id && names[c.user_id]) || "削除されたユーザー"),
       c.body,
-      (c.user_id === me.id || isOwner) ? el("button", { class: "x", onclick: () => delComment(c) }, "×") : null)));
+      canDelComment(c) ? el("button", { class: "x", onclick: () => delComment(c) }, "×") : null)));
     countEl.textContent = list.length ? String(list.length) : "";
   }
   async function delComment(c) {
@@ -381,7 +690,7 @@ function postCard(p, initialComments, url, names, isOwner, reload) {
     renderComments();
   }
   const inp = el("input", { type: "text", maxlength: 300, placeholder: "コメントを書く…" });
-  const cform = el("form", {
+  const cform = archived ? null : el("form", {
     class: "cform",
     onsubmit: async e => {
       e.preventDefault();
