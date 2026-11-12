@@ -28,6 +28,11 @@ a{color:inherit}
 .top .icon{position:relative}
 .badge{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#d64545;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
 .sect{margin:18px 0 4px;font-size:14px;font-weight:700}
+.btn.ghost.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.nitem{cursor:pointer}
+.nitem.unread{border-color:var(--accent);background:#fff0f3}
+.nitem .who2{white-space:normal;line-height:1.6}
+.tag{font-size:11px;color:var(--sub)}
 .addrow{display:flex;gap:8px;align-items:flex-end}
 .addrow input{margin-top:0}
 .addrow .btn{flex-shrink:0;height:46px}
@@ -297,11 +302,12 @@ async function route() {
         const hash = location.hash || "#/";
         let m;
         if (hash === "#/settings") refresh = await settingsPage(root);
-        else if (profile.is_admin) refresh = await adminPage(root);
+        else if (profile.is_admin) refresh = await adminNoticePage(root);
         else if (hash === "#/friends") refresh = await friendsPage(root);
+        else if (hash === "#/notifications") refresh = await notificationsPage(root);
         else if ((m = hash.match(/^#\/join\/(.+)$/))) refresh = await joinPage(root, m[1]);
         else if ((m = hash.match(/^#\/g\/([0-9a-fA-F-]+)$/))) refresh = await groupPage(root, m[1]);
-        else refresh = await homePage(root);
+        else { await homePage(root); refresh = () => route(); }
       }
     } catch (e) {
       console.error(e);
@@ -425,62 +431,31 @@ async function settingsPage(root) {
     el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
 }
 
-// ====== 管理者 ======
-async function adminPage(root) {
+// ====== 管理者（管理は専用アプリで行う） ======
+async function adminNoticePage(root) {
+  root.append(topbar(APP_NAME), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("h2", {}, "管理者アカウントです"),
+      el("p", { class: "sub", style: "line-height:1.7" }, "ID発行や通報の確認は、専用の管理者アプリで行います。"),
+      el("a", { class: "btn big", href: "admin.html" }, "管理者アプリを開く")),
+    el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+}
+
+// ====== 通知 ======
+async function notificationsPage(root) {
   const list = el("div", { class: "rows" });
-  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "例：taro", autocapitalize: "none", autocorrect: "off", spellcheck: "false" });
-
-  async function resetPw(u) {
-    const r = await askForm("パスワードの再設定",
-      [{ label: `@${u.login_id} の新しいパスワード（6桁の数字）`, max: 6, inputmode: "numeric", digits: true }],
-      "再設定", v => PW_RE.test(v[0]) ? null : "6桁の数字にしてください");
-    if (!r) return;
-    const { error } = await sb.rpc("admin_reset_password", { p_login_id: u.login_id, p_password: r[0] });
-    if (error) { toast(error.message); return; }
-    alert(`@${u.login_id} のパスワードを ${r[0]} に変更しました。\n本人に伝えてください。`);
-  }
-  async function delId(u) {
-    const msg = u.registered
-      ? `@${u.login_id}（${u.display_name}）を削除しますか？\nこの人はログインできなくなります。投稿した写真は残ります。`
-      : `@${u.login_id} の発行を取り消しますか？`;
-    if (!confirm(msg)) return;
-    const { error } = await sb.rpc("admin_delete_id", { p_login_id: u.login_id });
-    if (error) { toast(error.message); return; }
-    toast("削除しました");
-    load();
-  }
-  function rowFor(u) {
-    return el("div", { class: "rowi" },
-      el("div", { class: "who2" }, el("b", {}, "@" + u.login_id), " ",
-        u.registered ? el("small", {}, u.display_name) : el("small", {}, "（まだ登録していません）")),
-      el("div", { class: "ops" },
-        u.registered ? el("button", { class: "btn ghost sm", onclick: () => resetPw(u) }, "再設定") : null,
-        el("button", { class: "btn danger sm", onclick: () => delId(u) }, "削除")));
-  }
   async function load() {
-    const { data, error } = await sb.rpc("admin_list_users");
-    if (error) { list.replaceChildren(el("p", { class: "empty" }, error.message)); return; }
-    list.replaceChildren(...(data.length ? data.map(rowFor) : [el("p", { class: "empty" }, "まだIDを発行していません")]));
+    const { data, error } = await sb.from("notifications").select("*").order("created_at", { ascending: false }).limit(50);
+    if (error) throw error;
+    const rows = data || [];
+    list.replaceChildren(...(rows.length
+      ? rows.map(n => el("div", { class: "rowi nitem" + (n.read_at ? "" : " unread"), onclick: () => { if (n.link) location.hash = n.link; } },
+          el("div", { class: "who2" }, n.text, el("br"), el("small", {}, fmt(n.created_at))),
+          n.link ? el("span", { class: "chev" }, "›") : null))
+      : [el("p", { class: "empty" }, "通知はまだありません。")]));
+    if (rows.some(n => !n.read_at)) sb.rpc("mark_notifications_read").then(() => {});
   }
-  async function issue() {
-    const id = normId(idIn.value);
-    if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
-    const { error } = await sb.rpc("admin_issue_id", { p_login_id: id });
-    if (error) { toast(/duplicate|already/i.test(error.message) ? "そのIDはもう発行済みです" : error.message); return; }
-    idIn.value = "";
-    toast(`@${id} を発行しました。友達にIDを伝えてください`);
-    load();
-  }
-
-  root.append(topbar("管理者", { actions: [gearLink()] }), el("main", { class: "wrap" },
-    el("div", { class: "card" },
-      el("h2", {}, "IDを発行する"),
-      el("label", {}, "新しいID（英小文字・数字・_ の3〜20文字）", idIn),
-      el("button", { class: "btn big", onclick: issue }, "発行する"),
-      el("p", { class: "note" }, "発行したIDを友達に伝えると、友達が自分でパスワードを決めて登録できます。")),
-    el("div", { class: "card" },
-      el("h2", {}, "発行したID"),
-      list)));
+  root.append(topbar("通知", { back: true }), el("main", { class: "wrap" }, list));
   await load();
   return load;
 }
@@ -597,10 +572,16 @@ async function homePage(root) {
     const { data: fr } = await sb.from("friendships").select("id").eq("addressee_id", me.id).eq("status", "pending");
     pending = (fr || []).length;
   } catch {}
+  let unread = 0;
+  try {
+    const { data: nn } = await sb.from("notifications").select("id").eq("user_id", me.id).is("read_at", null);
+    unread = (nn || []).length;
+  } catch {}
+  const bellLink = el("a", { class: "icon", href: "#/notifications", title: "通知", style: "font-size:22px" }, "🔔", unread ? el("span", { class: "badge" }, unread > 99 ? "99+" : unread) : null);
   const friendsLink = el("a", { class: "icon", href: "#/friends", title: "フレンド", style: "font-size:22px" }, "👫", pending ? el("span", { class: "badge" }, pending) : null);
   const card = (g, cls) => el("a", { class: "gcard" + (cls ? " " + cls : ""), href: "#/g/" + g.id }, el("span", { class: "gname" }, g.name), el("span", { class: "chev" }, "›"));
   root.append(
-    topbar(APP_NAME, { actions: [friendsLink, gearLink()] }),
+    topbar(APP_NAME, { actions: [bellLink, friendsLink, gearLink()] }),
     el("main", { class: "wrap" },
       installTip(),
       active.length
@@ -756,12 +737,46 @@ async function groupPage(root, gid) {
         toast("削除できませんでした。もう一度試してください");
       }
     }
+    async function renameGroup() {
+      const r = await askForm("グループ名を変更", [{ label: "新しいグループ名", max: 40, value: group.name }], "変更");
+      if (!r) return;
+      const { error } = await sb.rpc("rename_group", { p_gid: gid, p_name: r[0] });
+      if (error) { toast(error.message); return; }
+      overlay.remove();
+      toast("グループ名を変更しました");
+      route();
+    }
+    async function removeMember(id) {
+      if (!confirm(`${names[id] || "この人"} さんをグループから外しますか？\n投稿した写真は残ります。`)) return;
+      const { error } = await sb.rpc("remove_member", { p_gid: gid, p_user: id });
+      if (error) { toast(error.message); return; }
+      memberIds.delete(id);
+      toast("外しました。招待リンクで戻れるので、必要ならリンクを作り直してください");
+      render();
+    }
+    async function leaveGroup() {
+      if (!confirm(`「${group.name}」を抜けますか？\n投稿した写真は残ります。`)) return;
+      const { error } = await sb.rpc("leave_group", { p_gid: gid });
+      if (error) { toast(error.message); return; }
+      overlay.remove();
+      toast("グループを抜けました");
+      location.hash = "#/";
+    }
+    async function resetInvite() {
+      if (!confirm("招待リンクを作り直しますか？\n今までのリンクは使えなくなります。")) return;
+      const { data, error } = await sb.rpc("reset_invite_link", { p_gid: gid });
+      if (error) { toast(error.message); return; }
+      group.invite_code = data;
+      toast("招待リンクを作り直しました");
+    }
     function render() {
       const addable = profiles.filter(p => !p.is_admin && friendIds.has(p.user_id) && !memberIds.has(p.user_id));
       const kids = [
         el("h2", {}, group.name),
         el("div", { class: "sub" }, `メンバー（${memberIds.size}人）`),
-        el("div", { class: "chips" }, [...memberIds].map(id => el("span", { class: "chip" }, names[id] || "?")))
+        el("div", { class: "rows" }, [...memberIds].map(id => el("div", { class: "rowi" },
+          el("div", { class: "who2" }, names[id] || "?", id === group.owner_id ? el("small", {}, "　作成者") : null),
+          (isOwner && id !== me.id) ? el("button", { class: "btn ghost sm", onclick: () => removeMember(id) }, "外す") : null)))
       ];
       if (!archived) {
         kids.push(el("div", { class: "sub", style: "margin-top:16px" }, "フレンドを追加（リンクなしで招待）"));
@@ -772,7 +787,13 @@ async function groupPage(root, gid) {
           : el("p", { class: "note" }, "追加できるフレンドがいません。", el("a", { href: "#/friends", style: "color:var(--accent);font-weight:700", onclick: () => overlay.remove() }, "フレンド画面で申請する")));
         kids.push(el("button", { class: "btn ghost big", onclick: () => inviteShare(group) }, "🔗 招待リンクを共有"));
       }
-      if (isOwner) kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
+      if (isOwner) {
+        kids.push(el("button", { class: "btn ghost big", onclick: renameGroup }, "✏ グループ名を変更する"));
+        if (!archived) kids.push(el("button", { class: "btn ghost big", onclick: resetInvite }, "🔗 招待リンクを作り直す"));
+        kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
+      } else {
+        kids.push(el("button", { class: "btn ghost big", onclick: leaveGroup }, "グループを抜ける"));
+      }
       if (isOwner) kids.push(el("button", { class: "btn danger big", onclick: deleteGroup }, "🗑 このグループを削除する"));
       kids.push(el("button", { class: "btn big", onclick: () => overlay.remove() }, "閉じる"));
       body.replaceChildren(...kids);
@@ -803,7 +824,7 @@ function postCard(p, initialComments, url, ctx) {
   const { names, isOwner, archived, reload } = ctx;
   const mine = p.user_id === me.id;
   const canDelete = isOwner || (mine && !archived);
-  const who = (p.user_id && names[p.user_id]) || "削除されたユーザー";
+  const who = (p.user_id && names[p.user_id]) || (p.user_id ? "退出したメンバー" : "削除されたユーザー");
   const list = [...initialComments];
   const media = p.media_type === "video"
     ? el("video", { src: url ? url + "#t=0.1" : "", controls: true, playsinline: true, preload: "metadata" })
@@ -814,7 +835,7 @@ function postCard(p, initialComments, url, ctx) {
   const canDelComment = c => isOwner || (c.user_id === me.id && !archived);
   function renderComments() {
     clist.replaceChildren(...list.map(c => el("div", { class: "cm" },
-      el("b", {}, (c.user_id && names[c.user_id]) || "削除されたユーザー"),
+      el("b", {}, (c.user_id && names[c.user_id]) || (c.user_id ? "退出したメンバー" : "削除されたユーザー")),
       c.body,
       canDelComment(c) ? el("button", { class: "x", onclick: () => delComment(c) }, "×") : null)));
     countEl.textContent = list.length ? String(list.length) : "";
@@ -859,8 +880,45 @@ function postCard(p, initialComments, url, ctx) {
       el("span", {}, "💬 ", countEl),
       el("span", { class: "sp" }),
       el("button", { onclick: () => savePost(p, url, who) }, "⬇ 保存"),
-      canDelete ? el("button", { onclick: del }, "🗑 削除") : null),
+      canDelete ? el("button", { onclick: del }, "🗑 削除") : null,
+      !mine ? el("button", { onclick: () => openReport(p) }, "🚩 通報") : null),
     clist, cform);
+}
+
+// ====== 通報 ======
+function openReport(p) {
+  const reasons = ["不適切な写真・動画", "自分が写っていて困る", "迷惑・いやがらせ", "その他"];
+  let reason = "", overlay;
+  const note = el("input", { type: "text", maxlength: 100, placeholder: "くわしく（なくてもOK）" });
+  const btns = reasons.map(r => {
+    const b = el("button", {
+      type: "button", class: "btn ghost", style: "width:100%;margin-top:8px",
+      onclick: () => { reason = r; btns.forEach(x => x.classList.remove("sel")); b.classList.add("sel"); }
+    }, r);
+    return b;
+  });
+  const send = el("button", {
+    class: "btn", type: "button",
+    onclick: async () => {
+      if (!reason) { toast("理由を選んでください"); return; }
+      send.disabled = true;
+      const text = note.value.trim() ? `${reason}：${note.value.trim()}` : reason;
+      const { error } = await sb.rpc("report_post", { p_post_id: p.id, p_reason: text });
+      if (error) { toast(error.message); send.disabled = false; return; }
+      overlay.remove();
+      toast("通報しました。管理者が確認します");
+    }
+  }, "通報する");
+  overlay = el("div", { class: "overlay", onclick: e => { if (e.target === overlay) overlay.remove(); } },
+    el("div", { class: "modal" },
+      el("h2", {}, "この投稿を通報"),
+      el("div", { class: "sub" }, "理由を選んでください。通報は管理者だけに届き、投稿した人には分かりません。"),
+      btns,
+      el("label", {}, "ひとこと", note),
+      el("div", { class: "row" },
+        el("button", { type: "button", class: "btn ghost", onclick: () => overlay.remove() }, "キャンセル"),
+        send)));
+  document.body.append(overlay);
 }
 
 // ====== 保存 ======

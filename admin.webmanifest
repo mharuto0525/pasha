@@ -1,0 +1,17 @@
+{
+  "name": "ぱしゃっと管理",
+  "short_name": "ぱしゃっと管理",
+  "description": "ぱしゃっとの管理者アプリ",
+  "id": "./admin.html",
+  "start_url": "./admin.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef8ff",
+  "theme_color": "#eef8ff",
+  "icons": [
+    { "src": "admin-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "admin-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "admin-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

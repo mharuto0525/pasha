@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef8ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ぱしゃっと管理">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="admin.webmanifest">
+<link rel="icon" type="image/png" href="admin-icon-192.png">
+<link rel="apple-touch-icon" href="admin-apple-touch-icon.png">
+<title>ぱしゃっと管理</title>
+<style>
+:root{
+  --bg:#eef8ff; --card:#fbfeff; --ink:#2c3a45; --sub:#7b8c99; --accent:#4db6e8; --line:#d3e6f2; --chip:#dcf0fb; --danger:#d64545;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif}
+body{min-height:100dvh}
+button,input{font:inherit;color:inherit}
+a{color:inherit}
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:rgba(238,248,255,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top h1{flex:1;margin:0;font-size:18px;text-align:center;white-space:nowrap}
+.top .icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;text-decoration:none;background:none;border:0;cursor:pointer}
+.tabsbar{display:flex;gap:8px;padding:10px 14px 0;max-width:520px;margin:0 auto}
+.tabsbar a{flex:1;text-align:center;padding:10px;border-radius:999px;border:1px solid var(--line);text-decoration:none;font-weight:700;font-size:14px;background:transparent;position:relative}
+.tabsbar a.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.dotbadge{display:inline-block;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;line-height:18px}
+.wrap{max-width:520px;margin:0 auto;padding:14px 14px 60px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:var(--danger)}
+.btn.sm{padding:6px 12px;font-size:13px}
+.btn.big{width:100%;padding:14px;font-size:16px;margin-top:12px}
+.btn:disabled{opacity:.5}
+.empty{text-align:center;color:var(--sub);padding:30px 12px;line-height:1.8}
+.note{color:var(--sub);font-size:12px;line-height:1.7;margin-top:12px}
+.sub{color:var(--sub);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card + .card{margin-top:14px}
+.card h2{margin:4px 0 12px;font-size:18px}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 0}
+input[type=text],input[type=password]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+.tabs{display:flex;gap:8px;margin-bottom:4px}
+.tabs button{flex:1;padding:10px;border-radius:999px;border:1px solid var(--line);background:transparent;font-weight:700;cursor:pointer}
+.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.rows{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.rowi{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.rowi .who2{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rowi small{color:var(--sub)}
+.rowi .ops{display:flex;gap:6px;flex-shrink:0}
+.rep .media{aspect-ratio:1/1;background:#1f2a33;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#9bb0bf;font-size:13px}
+.rep .media img,.rep .media video{width:100%;height:100%;object-fit:cover;display:block}
+.rep .info{font-size:14px;line-height:1.8;margin-top:10px}
+.rep .info b{display:inline-block;min-width:4.5em;color:var(--sub);font-weight:400}
+.rep .ops2{display:flex;gap:8px;margin-top:12px}
+.rep .ops2 .btn{flex:1}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:2px 10px;font-size:12px}
+details.done{margin-top:18px}
+details.done summary{cursor:pointer;color:var(--sub);font-size:14px;padding:6px 2px}
+.overlay{position:fixed;inset:0;z-index:100;background:rgba(20,34,44,.5);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{width:100%;max-width:380px;max-height:90dvh;overflow:auto;background:var(--card);border-radius:18px;padding:20px}
+.modal h2{margin:0 0 6px;font-size:18px}
+.modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.toast{position:fixed;left:50%;bottom:calc(40px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:200;background:rgba(20,34,44,.92);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;max-width:90vw;text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+// ====== 設定 ======
+const SUPABASE_URL = "https://krkpgjuxrlhllttluinr.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_E7OTdMtaDP9O6RkIoumsyQ_Ieefp72J";
+const EMAIL_DOMAIN = "gmail.com"; // メインアプリと同じ（メールは送られません）
+const APP_NAME = "ぱしゃっと管理";
+
+// ====== ユーティリティ ======
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) e.setAttribute(k, "");
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  }
+  return e;
+}
+function toast(msg) {
+  const t = el("div", { class: "toast" }, msg);
+  document.body.append(t);
+  setTimeout(() => t.remove(), 2600);
+}
+function fmt(d) {
+  d = new Date(d);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+const normId = s => String(s || "").trim().toLowerCase();
+const ID_RE = /^[a-z0-9_]{3,20}$/;
+const PW_RE = /^\d{6}$/;
+const toEmail = id => `${id}@${EMAIL_DOMAIN}`;
+function pwInput(placeholder, autocomplete = "off") {
+  return el("input", {
+    type: "password", inputmode: "numeric", maxlength: 6, placeholder, autocomplete,
+    oninput: e => { e.target.value = e.target.value.replace(/\D/g, ""); }
+  });
+}
+function askForm(title, fields, okLabel = "OK", validate) {
+  return new Promise(resolve => {
+    const inputs = fields.map(f => el("input", {
+      type: f.type || "text", inputmode: f.inputmode, maxlength: f.max || 30, placeholder: f.placeholder || "",
+      value: f.value || "", autocomplete: "off", autocapitalize: "none", autocorrect: "off", spellcheck: "false",
+      oninput: f.digits ? (e => { e.target.value = e.target.value.replace(/\D/g, ""); }) : null
+    }));
+    let overlay;
+    const close = val => { overlay.remove(); resolve(val); };
+    const form = el("form", {
+      class: "modal",
+      onsubmit: e => {
+        e.preventDefault();
+        const vals = inputs.map(i => i.value.trim());
+        if (vals.some(v => !v)) { toast("入力してください"); return; }
+        const err = validate && validate(vals);
+        if (err) { toast(err); return; }
+        close(vals);
+      }
+    },
+      el("h2", {}, title),
+      fields.map((f, i) => el("label", {}, f.label, inputs[i])),
+      el("div", { class: "row" },
+        el("button", { type: "button", class: "btn ghost", onclick: () => close(null) }, "キャンセル"),
+        el("button", { type: "submit", class: "btn" }, okLabel))
+    );
+    overlay = el("div", { class: "overlay" }, form);
+    document.body.append(overlay);
+    inputs[0].focus();
+  });
+}
+function topbar(title, actions = []) {
+  return el("header", { class: "top" }, el("span", { class: "icon" }), el("h1", {}, title), ...actions);
+}
+function tabsBar(active, openCount) {
+  return el("nav", { class: "tabsbar" },
+    el("a", { class: active === "ids" ? "on" : "", href: "#/" }, "ID管理"),
+    el("a", { class: active === "reports" ? "on" : "", href: "#/reports" }, "通報", openCount ? el("span", { class: "dotbadge" }, openCount) : null),
+    el("a", { class: active === "settings" ? "on" : "", href: "#/settings" }, "設定"));
+}
+
+// ====== Supabase / ログイン ======
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let me = null, profile = null, quietSignOut = false, routeSeq = 0;
+
+sb.auth.onAuthStateChange(event => {
+  if (event === "SIGNED_OUT" && !quietSignOut) { me = null; profile = null; setTimeout(route, 0); }
+});
+
+async function loadSession() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return false;
+  const bad = async () => {
+    quietSignOut = true;
+    try { await sb.auth.signOut(); } finally { quietSignOut = false; }
+    return false;
+  };
+  if (session.user.is_anonymous) return await bad();
+  const { data: p } = await sb.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle();
+  if (!p) return await bad();
+  me = session.user; profile = p;
+  return true;
+}
+async function doLogin(id, pw) {
+  const { error } = await sb.auth.signInWithPassword({ email: toEmail(id), password: pw });
+  if (error) throw error;
+}
+async function doRegister(id, name, pw) {
+  const { data, error } = await sb.auth.signUp({ email: toEmail(id), password: pw, options: { data: { display_name: name } } });
+  if (error) throw error;
+  if (!data.session) throw new Error("CONFIRM_ON");
+}
+function authMessage(err) {
+  const m = String((err && err.message) || err);
+  if (m === "CONFIRM_ON") return "設定が足りません：Supabaseの「Confirm email」をOFFにしてください";
+  if (/Invalid login credentials/i.test(m)) return "IDかパスワードが違います";
+  if (/already registered|already been registered|user_already_exists/i.test(m)) return "このIDはもう登録されています。ログインしてください";
+  if (/Database error/i.test(m)) return "このIDは発行されていません";
+  if (/rate limit|too many/i.test(m)) return "試行回数が多すぎます。少し待ってからやり直してください";
+  return "うまくいきませんでした：" + m;
+}
+const logout = () => sb.auth.signOut();
+
+// ====== ルーター ======
+async function route() {
+  const my = ++routeSeq;
+  const root = el("div");
+  try {
+    if (!(me && profile)) {
+      const ok = await loadSession();
+      if (my !== routeSeq) return;
+      if (!ok) { me = null; profile = null; }
+    }
+    if (!(me && profile)) loginPage(root);
+    else if (!profile.is_admin) notAdminPage(root);
+    else {
+      const hash = location.hash || "#/";
+      if (hash === "#/reports") await reportsPage(root);
+      else if (hash === "#/settings") await settingsPage(root);
+      else await idsPage(root);
+    }
+  } catch (e) {
+    console.error(e);
+    root.replaceChildren(topbar(APP_NAME), el("main", { class: "wrap" },
+      el("p", { class: "empty" }, "うまく読み込めませんでした。", el("br"), String(e.message || e)),
+      el("button", { class: "btn big", onclick: () => location.reload() }, "再読み込み")));
+  }
+  if (my !== routeSeq) return;
+  $("#app").replaceChildren(root);
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+
+// ====== ログイン画面 ======
+function loginPage(root) {
+  let mode = "login";
+  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "管理者のID", autocapitalize: "none", autocorrect: "off", spellcheck: "false", autocomplete: "username" });
+  const nameIn = el("input", { type: "text", maxlength: 20, placeholder: "例：管理者", autocomplete: "off" });
+  const pwIn = pwInput("6桁の数字", "current-password");
+  const pw2In = pwInput("もう一度入れてください");
+  const nameLabel = el("label", {}, "表示名", nameIn);
+  const pw2Label = el("label", {}, "パスワードの確認", pw2In);
+  const btn = el("button", { class: "btn big", type: "submit" }, "ログイン");
+  const tLogin = el("button", { type: "button", class: "on", onclick: () => setMode("login") }, "ログイン");
+  const tReg = el("button", { type: "button", onclick: () => setMode("register") }, "はじめて登録");
+  const hint = el("p", { class: "note" }, "");
+  function setMode(m) {
+    mode = m;
+    tLogin.className = m === "login" ? "on" : "";
+    tReg.className = m === "register" ? "on" : "";
+    nameLabel.style.display = pw2Label.style.display = m === "register" ? "block" : "none";
+    btn.textContent = m === "register" ? "登録してはじめる" : "ログイン";
+    pwIn.setAttribute("autocomplete", m === "register" ? "new-password" : "current-password");
+    hint.textContent = m === "register" ? "管理者IDを初めて使うときだけ、ここで登録します。" : "管理者アカウントでログインしてください。";
+  }
+  const form = el("form", {
+    class: "card",
+    onsubmit: async e => {
+      e.preventDefault();
+      const id = normId(idIn.value), pw = pwIn.value, name = nameIn.value.trim();
+      if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
+      if (!PW_RE.test(pw)) { toast("パスワードは6桁の数字です"); return; }
+      if (mode === "register") {
+        if (!name) { toast("表示名を入れてください"); return; }
+        if (pw !== pw2In.value) { toast("パスワードが一致しません"); return; }
+      }
+      btn.disabled = true;
+      try {
+        if (mode === "login") await doLogin(id, pw); else await doRegister(id, name, pw);
+        me = null; profile = null;
+        route();
+      } catch (err) {
+        console.error(err);
+        toast(authMessage(err));
+        btn.disabled = false;
+      }
+    }
+  }, el("div", { class: "tabs" }, tLogin, tReg), el("label", {}, "ID", idIn), nameLabel,
+     el("label", {}, "パスワード（6桁の数字）", pwIn), pw2Label, btn, hint);
+  setMode("login");
+  root.append(topbar(APP_NAME), el("main", { class: "wrap" },
+    el("p", { class: "empty", style: "padding:18px 12px 8px" }, "管理者専用のアプリです🛠"), form));
+}
+function notAdminPage(root) {
+  root.append(topbar(APP_NAME), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("h2", {}, "管理者ではありません"),
+      el("p", { class: "sub", style: "line-height:1.7" }, `@${profile.login_id} は管理者アカウントではないので、この画面は使えません。`),
+      el("a", { class: "btn big", href: "./" }, "ぱしゃっとを開く")),
+    el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+}
+
+async function openReportCount() {
+  const { data } = await sb.rpc("admin_list_reports");
+  return (data || []).filter(r => r.status === "open").length;
+}
+
+// ====== ID管理 ======
+async function idsPage(root) {
+  const list = el("div", { class: "rows" });
+  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "例：taro", autocapitalize: "none", autocorrect: "off", spellcheck: "false" });
+
+  async function resetPw(u) {
+    const r = await askForm("パスワードの再設定",
+      [{ label: `@${u.login_id} の新しいパスワード（6桁の数字）`, max: 6, inputmode: "numeric", digits: true }],
+      "再設定", v => PW_RE.test(v[0]) ? null : "6桁の数字にしてください");
+    if (!r) return;
+    const { error } = await sb.rpc("admin_reset_password", { p_login_id: u.login_id, p_password: r[0] });
+    if (error) { toast(error.message); return; }
+    alert(`@${u.login_id} のパスワードを ${r[0]} に変更しました。\n本人に伝えてください。`);
+  }
+  async function delId(u) {
+    const msg = u.registered
+      ? `@${u.login_id}（${u.display_name}）を削除しますか？\nこの人はログインできなくなります。投稿した写真は残ります。`
+      : `@${u.login_id} の発行を取り消しますか？`;
+    if (!confirm(msg)) return;
+    const { error } = await sb.rpc("admin_delete_id", { p_login_id: u.login_id });
+    if (error) { toast(error.message); return; }
+    toast("削除しました");
+    load();
+  }
+  function rowFor(u) {
+    return el("div", { class: "rowi" },
+      el("div", { class: "who2" }, el("b", {}, "@" + u.login_id), " ",
+        u.registered ? el("small", {}, u.display_name) : el("small", {}, "（まだ登録していません）")),
+      el("div", { class: "ops" },
+        u.registered ? el("button", { class: "btn ghost sm", onclick: () => resetPw(u) }, "再設定") : null,
+        el("button", { class: "btn danger sm", onclick: () => delId(u) }, "削除")));
+  }
+  async function load() {
+    const { data, error } = await sb.rpc("admin_list_users");
+    if (error) { list.replaceChildren(el("p", { class: "empty" }, error.message)); return; }
+    list.replaceChildren(...(data.length ? data.map(rowFor) : [el("p", { class: "empty" }, "まだIDを発行していません")]));
+  }
+  async function issue() {
+    const id = normId(idIn.value);
+    if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
+    const { error } = await sb.rpc("admin_issue_id", { p_login_id: id });
+    if (error) { toast(/duplicate|already/i.test(error.message) ? "そのIDはもう発行済みです" : error.message); return; }
+    idIn.value = "";
+    toast(`@${id} を発行しました。友達にIDを伝えてください`);
+    load();
+  }
+
+  const openCount = await openReportCount();
+  root.append(topbar("管理者"), tabsBar("ids", openCount), el("main", { class: "wrap" },
+    el("div", { class: "card" },
+      el("h2", {}, "IDを発行する"),
+      el("label", {}, "新しいID（英小文字・数字・_ の3〜20文字）", idIn),
+      el("button", { class: "btn big", onclick: issue }, "発行する"),
+      el("p", { class: "note" }, "発行したIDを友達に伝えると、友達が自分でパスワードを決めて登録できます。")),
+    el("div", { class: "card" }, el("h2", {}, "発行したID"), list)));
+  await load();
+}
+
+// ====== 通報 ======
+async function reportsPage(root) {
+  const { data, error } = await sb.rpc("admin_list_reports");
+  if (error) throw error;
+  const rows = data || [];
+  const open = rows.filter(r => r.status === "open");
+  const done = rows.filter(r => r.status !== "open");
+
+  const urls = {};
+  if (open.length) {
+    const { data: s } = await sb.storage.from("media").createSignedUrls(open.map(r => r.media_path), 3600);
+    (s || []).forEach(x => { if (x.path && x.signedUrl) urls[x.path] = x.signedUrl; });
+  }
+
+  async function decide(r, remove) {
+    if (remove && !confirm("この投稿を削除しますか？\n元に戻せません。")) return;
+    const { data: path, error: e } = await sb.rpc("admin_resolve_report", { p_id: r.id, p_remove: remove });
+    if (e) { toast(e.message); return; }
+    if (remove && path) {
+      const { error: se } = await sb.storage.from("media").remove([path]);
+      if (se) toast("投稿は削除しましたが、ファイルの削除に失敗しました");
+      else toast("削除しました");
+    } else {
+      toast(remove ? "削除しました" : "問題なしにしました");
+    }
+    route();
+  }
+
+  function card(r) {
+    const url = urls[r.media_path];
+    const media = !url ? el("div", { class: "media" }, "表示できません（すでに削除された可能性があります）")
+      : r.media_type === "video"
+        ? el("div", { class: "media" }, el("video", { src: url + "#t=0.1", controls: true, playsinline: true, preload: "metadata" }))
+        : el("div", { class: "media" }, el("img", { src: url, alt: "" }));
+    return el("div", { class: "card rep" }, media,
+      el("div", { class: "info" },
+        el("div", {}, el("b", {}, "グループ"), r.group_name || "（削除済み）"),
+        el("div", {}, el("b", {}, "投稿した人"), r.poster_name || "（不明）"),
+        el("div", {}, el("b", {}, "撮影日時"), r.taken_at ? fmt(r.taken_at) : "-"),
+        el("div", {}, el("b", {}, "通報した人"), r.reporter_name || "（不明）"),
+        el("div", {}, el("b", {}, "理由"), r.reason),
+        el("div", {}, el("b", {}, "通報日時"), fmt(r.created_at))),
+      el("div", { class: "ops2" },
+        el("button", { class: "btn ghost", onclick: () => decide(r, false) }, "問題なし"),
+        el("button", { class: "btn danger", onclick: () => decide(r, true) }, "削除する")));
+  }
+
+  const kids = [];
+  if (open.length) kids.push(...open.map(card));
+  else kids.push(el("div", { class: "card" }, el("p", { class: "empty", style: "padding:14px" }, "確認が必要な通報はありません 🎉")));
+  if (done.length) {
+    kids.push(el("details", { class: "done" }, el("summary", {}, `処理済み（${done.length}）`),
+      el("div", { class: "rows" }, done.map(r => el("div", { class: "rowi" },
+        el("div", { class: "who2" }, el("span", { class: "chip" }, r.status === "removed" ? "削除" : "問題なし"), " ",
+          el("small", {}, `${r.group_name || "?"} / ${r.poster_name || "?"} / ${r.reason}`)),
+        el("small", {}, r.resolved_at ? fmt(r.resolved_at) : ""))))));
+  }
+  root.append(topbar("管理者"), tabsBar("reports", open.length), el("main", { class: "wrap" }, ...kids));
+}
+
+// ====== 設定 ======
+async function settingsPage(root) {
+  const pw1 = pwInput("新しい6桁の数字", "new-password");
+  const pw2 = pwInput("もう一度入れてください");
+  const savePw = el("button", {
+    class: "btn big",
+    onclick: async () => {
+      if (!PW_RE.test(pw1.value)) { toast("パスワードは6桁の数字です"); return; }
+      if (pw1.value !== pw2.value) { toast("パスワードが一致しません"); return; }
+      const { error } = await sb.auth.updateUser({ password: pw1.value });
+      if (error) { toast(/different/i.test(error.message) ? "今のパスワードと違う数字にしてください" : "変更できませんでした：" + error.message); return; }
+      pw1.value = pw2.value = "";
+      toast("パスワードを変更しました。忘れないようにメモしてください");
+    }
+  }, "パスワードを変更");
+  const openCount = await openReportCount();
+  root.append(topbar("管理者"), tabsBar("settings", openCount), el("main", { class: "wrap" },
+    el("div", { class: "card" }, el("div", { class: "sub" }, "ログイン中のID"), el("h2", {}, "@" + profile.login_id)),
+    el("div", { class: "card" },
+      el("h2", {}, "パスワードを変える"),
+      el("label", {}, "新しいパスワード（6桁の数字）", pw1),
+      el("label", {}, "もう一度", pw2), savePw),
+    el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+}
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+}
+route();
+</script>
+</body>
+</html>
