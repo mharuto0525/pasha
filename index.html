@@ -281,7 +281,7 @@ const gearLink = () => el("a", { class: "icon", href: "#/settings", title: "設�
 
 // ====== Supabase / ログイン状態 ======
 const configured = !SUPABASE_URL.startsWith("YOUR_");
-const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: "pasha-main-auth", persistSession: true, autoRefreshToken: true } }) : null;
 let me = null;        // ログイン中のユーザー
 let profile = null;   // {user_id, login_id, display_name, is_admin}
 let refreshHook = null;
