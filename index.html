@@ -79,7 +79,15 @@ details.arch .glist{margin-top:8px}
 .feed{display:flex;flex-direction:column;gap:26px}
 .post{background:transparent}
 .phead{display:flex;align-items:center;gap:8px;padding:0 4px 8px}
-.avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.avatar.lg{width:56px;height:56px;font-size:28px}
+.avatar.sm{width:26px;height:26px;font-size:13px}
+.who2.wa{display:flex;align-items:center;gap:8px}
+.apick{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px}
+.apick button{aspect-ratio:1/1;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:22px;cursor:pointer;padding:0}
+.apick button.sel{border-color:var(--accent);background:#fff0f3}
+.apick.colors button{border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.apick.colors button.sel{box-shadow:0 0 0 3px var(--ink)}
 .phead .who{font-weight:700;font-size:14px}
 .polaroid{background:var(--card);padding:14px 14px 0;border-radius:4px;box-shadow:0 6px 18px rgba(90,60,30,.18),0 1px 3px rgba(90,60,30,.15)}
 .post:nth-child(odd) .polaroid{transform:rotate(-.7deg)}
@@ -234,6 +242,13 @@ const normId = s => String(s || "").trim().toLowerCase();
 const ID_RE = /^[a-z0-9_]{3,20}$/;
 const PW_RE = /^\d{6}$/;
 const toEmail = id => `${id}@${EMAIL_DOMAIN}`;
+const AV_EMOJI = ["😀","😎","🥰","😺","🐶","🐰","🦊","🐼","🐸","🐧","🦁","🐯","🌸","🍀","⭐","🌈","🍓","🍙","⚽","🎸","🚗","🎮","📷","👻"];
+const AV_COLORS = ["#ff6b81","#ff9f68","#f5c542","#6cc788","#4db6e8","#7b8cff","#b57bff","#8a7e72"];
+function avatarEl(p, size) {
+  const nm = (p && p.display_name) || "?";
+  return el("div", { class: "avatar" + (size ? " " + size : ""), style: "background:" + ((p && p.avatar_color) || "var(--accent)") },
+    (p && p.avatar) || [...nm][0] || "?");
+}
 
 function pwInput(placeholder, autocomplete = "off") {
   return el("input", {
@@ -364,6 +379,7 @@ async function route() {
         else if (profile.is_admin) refresh = await adminNoticePage(root);
         else if (hash === "#/friends") refresh = await friendsPage(root);
         else if (hash === "#/notifications") refresh = await notificationsPage(root);
+        else if (hash === "#/rejected") refresh = await rejectedPage(root);
         else if ((m = hash.match(/^#\/join\/(.+)$/))) refresh = await joinPage(root, m[1]);
         else if ((m = hash.match(/^#\/g\/([0-9a-fA-F-]+)$/))) refresh = await groupPage(root, m[1]);
         else { await homePage(root); refresh = () => route(); }
@@ -456,10 +472,14 @@ function urlB64ToUint8(b64) {
 function pushSupported() {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
+// サービスワーカーが使えない環境でも画面が固まらないよう、待つのは4秒まで
+function swReady() {
+  return Promise.race([navigator.serviceWorker.ready, new Promise((_, rej) => setTimeout(() => rej(new Error("sw-timeout")), 4000))]);
+}
 async function currentSub() {
   if (!pushSupported()) return null;
-  const reg = await navigator.serviceWorker.ready;
-  return reg.pushManager.getSubscription();
+  try { const reg = await swReady(); return await reg.pushManager.getSubscription(); }
+  catch (_) { return null; }
 }
 async function saveSub(sub) {
   const j = sub.toJSON();
@@ -469,7 +489,7 @@ async function saveSub(sub) {
 async function enablePush() {
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error("denied");
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await swReady();
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
   await saveSub(sub);
@@ -485,7 +505,7 @@ async function disablePush() {
 async function syncPush() {
   try {
     if (!pushSupported() || Notification.permission !== "granted") return;
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await swReady();
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
     await saveSub(sub);
@@ -535,7 +555,10 @@ async function settingsPage(root) {
   }, "パスワードを変更");
 
   const pushCard = profile.is_admin ? null : await pushSettingsCard();
+  const avatarCard = profile.is_admin ? null : avatarSettingsCard();
+  const idCard = profile.is_admin ? null : await idChangeCard();
   root.append(topbar("設定", { back: true }), el("main", { class: "wrap" },
+    ...(avatarCard ? [avatarCard] : []),
     ...(pushCard ? [pushCard] : []),
     el("div", { class: "card" },
       el("div", { class: "sub" }, "ログイン中のID"),
@@ -545,7 +568,81 @@ async function settingsPage(root) {
       el("h2", {}, "パスワードを変える"),
       el("label", {}, "新しいパスワード（6桁の数字）", pw1),
       el("label", {}, "もう一度", pw2), savePw),
+    ...(idCard ? [idCard] : []),
+    ...(profile.is_admin ? [] : [el("a", { class: "btn ghost big", href: "#/rejected" }, "拒否中のグループ")]),
     el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+}
+
+// アイコン（絵文字と色）の設定
+function avatarSettingsCard() {
+  let emoji = profile.avatar || "", color = profile.avatar_color || AV_COLORS[0];
+  const preview = el("div", { style: "display:flex;align-items:center;gap:12px" });
+  const ePick = el("div", { class: "apick" }), cPick = el("div", { class: "apick colors" });
+  function draw() {
+    preview.replaceChildren(avatarEl({ display_name: profile.display_name, avatar: emoji, avatar_color: color }, "lg"),
+      el("div", { class: "sub" }, "名前の横や、投稿に表示されます"));
+    ePick.replaceChildren(el("button", { class: emoji ? "" : "sel", onclick: () => { emoji = ""; draw(); } }, [...profile.display_name][0] || "？"),
+      ...AV_EMOJI.map(x => el("button", { class: emoji === x ? "sel" : "", onclick: () => { emoji = x; draw(); } }, x)));
+    cPick.replaceChildren(...AV_COLORS.map(c => el("button", { class: color === c ? "sel" : "", style: "background:" + c, onclick: () => { color = c; draw(); } })));
+  }
+  draw();
+  return el("div", { class: "card" }, el("h2", {}, "アイコン"), preview,
+    el("label", {}, "絵文字"), ePick, el("label", {}, "色"), cPick,
+    el("button", { class: "btn big", onclick: async () => {
+      const { error } = await sb.rpc("set_my_avatar", { p_avatar: emoji || null, p_color: color });
+      if (error) { toast("保存できませんでした"); return; }
+      profile.avatar = emoji || null; profile.avatar_color = color;
+      toast("アイコンを保存しました");
+    } }, "アイコンを保存"));
+}
+
+// IDの変更届
+async function idChangeCard() {
+  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "新しいID", autocapitalize: "none", autocorrect: "off", spellcheck: "false" });
+  const box = el("div");
+  async function draw() {
+    const { data } = await sb.from("id_change_requests").select("*").eq("status", "open").maybeSingle();
+    box.replaceChildren(...(data
+      ? [el("p", { class: "sub", style: "line-height:1.7" }, `申請中：@${data.new_id} に変更したい（管理者の確認待ち）`),
+         el("button", { class: "btn ghost big", onclick: async () => { await sb.rpc("cancel_id_change"); toast("取り消しました"); draw(); } }, "申請を取り消す")]
+      : [el("label", {}, "新しいID（英小文字・数字・_ の3〜20文字）", idIn),
+         el("button", { class: "btn big", onclick: async () => {
+           const id = normId(idIn.value);
+           if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
+           const { error } = await sb.rpc("request_id_change", { p_new_id: id });
+           if (error) { toast(error.message); return; }
+           idIn.value = "";
+           toast("変更届を出しました。管理者が確認します");
+           draw();
+         } }, "変更届を出す"),
+         el("p", { class: "note" }, "管理者が承認すると、IDが変わります。変わったあとは、新しいIDでログインしてください。パスワードは今のままです。")]));
+  }
+  await draw();
+  return el("div", { class: "card" }, el("h2", {}, "IDの変更届"), box);
+}
+
+// 拒否中のグループ
+async function rejectedPage(root) {
+  const list = el("div", { class: "rows" });
+  async function load() {
+    const { data, error } = await sb.from("group_rejections").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    const rows = data || [];
+    list.replaceChildren(...(rows.length ? rows.map(r => el("div", { class: "rowi" },
+      el("div", { class: "who2" }, r.group_name || "（グループ）", el("br"), el("small", {}, fmt(r.created_at) + " に拒否")),
+      el("button", { class: "btn ghost sm", onclick: async () => {
+        const { error: e } = await sb.rpc("unreject_group", { p_gid: r.group_id });
+        if (e) { toast("取り消せませんでした"); return; }
+        toast("拒否を取り消しました。また追加できるようになります");
+        load();
+      } }, "取り消す")))
+      : [el("p", { class: "empty" }, "拒否中のグループはありません。")]));
+  }
+  root.append(topbar("拒否中のグループ", { back: true }), el("main", { class: "wrap" },
+    el("p", { class: "note", style: "margin:0 0 8px" }, "ここにあるグループには、招待リンクからも、フレンドからも追加されません。取り消すと、また入れるようになります。"),
+    list));
+  await load();
+  return load;
 }
 
 // ====== 管理者（管理は専用アプリで行う） ======
@@ -608,7 +705,7 @@ async function friendsPage(root) {
     const [fr, bl, pr] = await Promise.all([
       sb.from("friendships").select("*"),
       sb.from("blocks").select("*"),
-      sb.from("profiles").select("user_id,login_id,display_name,is_admin")
+      sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color")
     ]);
     if (fr.error) { body.replaceChildren(el("p", { class: "empty" }, "読み込めませんでした：" + fr.error.message)); return; }
     const prof = Object.fromEntries((pr.data || []).map(p => [p.user_id, p]));
@@ -620,7 +717,7 @@ async function friendsPage(root) {
 
     const person = id => {
       const p = prof[id];
-      return el("div", { class: "who2" }, el("b", {}, p ? p.display_name : "？"), " ", el("small", {}, p ? "@" + p.login_id : ""));
+      return el("div", { class: "who2 wa" }, avatarEl(p || { display_name: "？" }, "sm"), el("span", {}, el("b", {}, p ? p.display_name : "？"), " ", el("small", {}, p ? "@" + p.login_id : "")));
     };
     const row = (id, ...btns) => el("div", { class: "rowi" }, person(id), el("div", { class: "ops" }, ...btns));
     const name = id => (prof[id] ? prof[id].display_name : "この人");
@@ -761,10 +858,12 @@ async function groupPage(root, gid) {
   const [gr, mr, pr, fr] = await Promise.all([
     sb.from("groups").select("*").eq("id", gid).maybeSingle(),
     sb.from("members").select("user_id").eq("group_id", gid),
-    sb.from("profiles").select("user_id,login_id,display_name,is_admin"),
-    sb.from("friendships").select("requester_id,addressee_id").eq("status", "accepted")
+    sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color"),
+    sb.from("friendships").select("requester_id,addressee_id,status")
   ]);
-  const friendIds = new Set((fr.data || []).map(f => (f.requester_id === me.id ? f.addressee_id : f.requester_id)));
+  const frOther = f => (f.requester_id === me.id ? f.addressee_id : f.requester_id);
+  const friendIds = new Set((fr.data || []).filter(f => f.status === "accepted").map(frOther));
+  const pendingIds = new Set((fr.data || []).filter(f => f.status === "pending").map(frOther));
   const group = gr.data;
   if (gr.error || !group) {
     root.append(topbar(APP_NAME, { back: true }), el("main", { class: "wrap" },
@@ -774,6 +873,7 @@ async function groupPage(root, gid) {
   }
   const profiles = pr.data || [];
   const names = Object.fromEntries(profiles.map(p => [p.user_id, p.display_name]));
+  const profs = Object.fromEntries(profiles.map(p => [p.user_id, p]));
   const memberIds = new Set((mr.data || []).map(m => m.user_id));
   const isOwner = group.owner_id === me.id;
   const archived = !!group.archived;
@@ -800,7 +900,7 @@ async function groupPage(root, gid) {
       feed.replaceChildren(el("p", { class: "empty" }, archived ? "投稿はありません。" : "まだ投稿がありません。", archived ? null : [el("br"), "下のカメラボタンで最初の1枚を撮ろう📷"]));
       return;
     }
-    const ctx = { names, isOwner, archived, reload: loadFeed };
+    const ctx = { names, profs, isOwner, archived, reload: loadFeed };
     feed.replaceChildren(
       ...posts.map(p => postCard(p, comments.filter(c => c.post_id === p.id), urls[p.media_path], ctx)),
       ...(more ? [el("button", { class: "btn ghost", onclick: () => { limit += 20; loadFeed(); } }, "もっと見る")] : [])
@@ -817,6 +917,21 @@ async function groupPage(root, gid) {
       memberIds.add(p.user_id);
       toast(`${p.display_name} さんを追加しました`);
       render();
+    }
+    async function friendReq(id) {
+      const { data, error } = await sb.rpc("send_friend_request_to", { p_user: id });
+      if (error) { toast(error.message); return; }
+      if (data === "accepted") friendIds.add(id); else pendingIds.add(id);
+      toast(data === "accepted" ? "フレンドになりました" : "フレンド申請を送りました");
+      render();
+    }
+    async function rejectGroup() {
+      if (!confirm(`「${group.name}」を拒否して抜けますか？\n・グループから抜けます\n・今後、招待リンクやフレンドからも追加されなくなります\n・あとから「設定」の「拒否中のグループ」で取り消せます`)) return;
+      const { error } = await sb.rpc("reject_group", { p_gid: gid });
+      if (error) { toast(error.message); return; }
+      overlay.remove();
+      toast("拒否しました");
+      location.hash = "#/";
     }
     async function toggleArchive() {
       const next = !archived;
@@ -892,14 +1007,20 @@ async function groupPage(root, gid) {
         el("h2", {}, group.name),
         el("div", { class: "sub" }, `メンバー（${memberIds.size}人）`),
         el("div", { class: "rows" }, [...memberIds].map(id => el("div", { class: "rowi" },
-          el("div", { class: "who2" }, names[id] || "?", id === group.owner_id ? el("small", {}, "　作成者") : null),
-          (isOwner && id !== me.id) ? el("button", { class: "btn ghost sm", onclick: () => removeMember(id) }, "外す") : null)))
+          el("div", { class: "who2 wa" }, avatarEl(profs[id], "sm"), el("span", {}, names[id] || "?", id === group.owner_id ? el("small", {}, "　作成者") : null)),
+          el("div", { class: "ops" },
+            (id !== me.id && profs[id] && !profs[id].is_admin && !friendIds.has(id))
+              ? (pendingIds.has(id)
+                  ? el("small", {}, "申請中")
+                  : el("button", { class: "btn ghost sm", onclick: () => friendReq(id) }, "フレンド申請"))
+              : null,
+            (isOwner && id !== me.id) ? el("button", { class: "btn ghost sm", onclick: () => removeMember(id) }, "外す") : null))))
       ];
       if (!archived) {
         kids.push(el("div", { class: "sub", style: "margin-top:16px" }, "フレンドを追加（リンクなしで招待）"));
         kids.push(addable.length
           ? el("div", { class: "rows" }, addable.map(p => el("div", { class: "rowi" },
-              el("div", { class: "who2" }, p.display_name, " ", el("small", {}, "@" + p.login_id)),
+              el("div", { class: "who2 wa" }, avatarEl(p, "sm"), el("span", {}, p.display_name, " ", el("small", {}, "@" + p.login_id))),
               el("button", { class: "btn sm", onclick: () => addFriend(p) }, "追加"))))
           : el("p", { class: "note" }, "追加できるフレンドがいません。", el("a", { href: "#/friends", style: "color:var(--accent);font-weight:700", onclick: () => overlay.remove() }, "フレンド画面で申請する")));
         kids.push(el("button", { class: "btn ghost big", onclick: () => inviteShare(group) }, "🔗 招待リンクを共有"));
@@ -910,6 +1031,7 @@ async function groupPage(root, gid) {
         kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
       } else {
         kids.push(el("button", { class: "btn ghost big", onclick: leaveGroup }, "グループを抜ける"));
+        kids.push(el("button", { class: "btn ghost big", onclick: rejectGroup }, "🚫 拒否して抜ける（二度と追加されない）"));
       }
       if (isOwner) kids.push(el("button", { class: "btn danger big", onclick: deleteGroup }, "🗑 このグループを削除する"));
       kids.push(el("button", { class: "btn big", onclick: () => overlay.remove() }, "閉じる"));
@@ -939,6 +1061,7 @@ async function groupPage(root, gid) {
 
 function postCard(p, initialComments, url, ctx) {
   const { names, isOwner, archived, reload } = ctx;
+  const profs = ctx.profs || {};
   const mine = p.user_id === me.id;
   const canDelete = isOwner || (mine && !archived);
   const who = (p.user_id && names[p.user_id]) || (p.user_id ? "退出したメンバー" : "削除されたユーザー");
@@ -989,7 +1112,7 @@ function postCard(p, initialComments, url, ctx) {
 
   renderComments();
   return el("article", { class: "post" },
-    el("div", { class: "phead" }, el("div", { class: "avatar" }, [...who][0] || "?"), el("span", { class: "who" }, who)),
+    el("div", { class: "phead" }, avatarEl(profs[p.user_id] || { display_name: who }), el("span", { class: "who" }, who)),
     el("div", { class: "polaroid" },
       el("div", { class: "media" }, media),
       el("div", { class: "cap" }, fmt(p.taken_at), p.media_type === "video" ? el("span", { class: "vbadge" }, "🎬") : null)),
