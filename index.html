@@ -327,6 +327,8 @@ let profile = null;   // {user_id, login_id, display_name, is_admin}
 let refreshHook = null;
 let quietSignOut = false;
 let routeSeq = 0;
+let showLogin = false;   // 招待リンクの画面で「ログインする」を選んだか
+const isGuest = () => !!(profile && profile.is_guest);
 
 if (sb) {
   sb.auth.onAuthStateChange(event => {
@@ -345,7 +347,6 @@ async function loadSession() {
     try { await sb.auth.signOut(); } finally { quietSignOut = false; }
     return false;
   };
-  if (session.user.is_anonymous) return await bad();
   const { data: p } = await sb.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle();
   if (!p) return await bad();
   me = session.user; profile = p;
@@ -389,7 +390,8 @@ async function route() {
         if (!ok) { me = null; profile = null; }
       }
       if (!(me && profile)) {
-        loginPage(root);
+        const jm = (location.hash || "").match(/^#\/join\/(.+)$/);
+        if (jm && !showLogin) guestJoinPage(root, jm[1]); else loginPage(root);
       } else {
         if (!profile.is_admin && !pushSynced && (!profile.reg_status || profile.reg_status === "approved")) { pushSynced = true; syncPush(); }
         const hash = location.hash || "#/";
@@ -397,6 +399,7 @@ async function route() {
         if (!profile.is_admin && profile.reg_status && profile.reg_status !== "approved") pendingPage(root);
         else if (hash === "#/settings") refresh = await settingsPage(root);
         else if (profile.is_admin) refresh = await adminNoticePage(root);
+        else if (isGuest() && (hash === "#/friends" || hash === "#/rejected")) { await homePage(root); refresh = () => route(); }
         else if (hash === "#/friends") refresh = await friendsPage(root);
         else if (hash === "#/notifications") refresh = await notificationsPage(root);
         else if (hash === "#/rejected") refresh = await rejectedPage(root);
@@ -420,6 +423,37 @@ window.addEventListener("hashchange", route);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && refreshHook) refreshHook(); });
 
 // ====== ログイン / 登録 ======
+// ====== ゲスト参加（IDなし） ======
+function guestJoinPage(root, code) {
+  const nameIn = el("input", { type: "text", maxlength: 20, placeholder: "みんなに表示される名前", autocomplete: "off" });
+  const btn = el("button", { class: "btn big", type: "submit" }, "ゲストとして参加する");
+  const form = el("form", {
+    class: "card",
+    onsubmit: async e => {
+      e.preventDefault();
+      const name = nameIn.value.trim();
+      if (!name) { toast("名前を入れてください"); return; }
+      btn.disabled = true;
+      const { error } = await sb.auth.signInAnonymously({ options: { data: { display_name: name } } });
+      if (error) {
+        console.error(error);
+        toast(/anonymous/i.test(error.message) ? "ゲスト参加がまだ使えません。招待した人に伝えてください" : "うまくいきませんでした：" + error.message);
+        btn.disabled = false;
+        return;
+      }
+      me = null; profile = null;
+      route();
+    }
+  },
+    el("h2", {}, "グループに招待されました"),
+    el("label", {}, "あなたの名前", nameIn),
+    btn,
+    el("p", { class: "note" }, "ゲストは、IDを作らずに参加できます。写真・動画を撮って投稿することと、みんなの投稿を見ることができます。コメント、フレンド、グループを作ることはできません。グループがアーカイブされると、見られなくなります。"),
+    el("p", { class: "note", style: "color:var(--ink)" }, "⚠ ログアウトしたり、このアプリのデータを消したりすると、同じゲストには戻れません。"));
+  root.append(topbar(APP_NAME), el("main", { class: "wrap" }, form,
+    el("button", { class: "btn ghost big", onclick: () => { showLogin = true; route(); } }, "IDを持っている方はログイン")));
+}
+
 // ====== 承認待ち ======
 function pendingPage(root) {
   const rejected = profile.reg_status === "rejected";
@@ -514,7 +548,7 @@ function loginPage(root) {
           alert("再設定を申請しました。\n管理者が確認します。" + (mailIn.value.trim() ? "\n結果はメールでお知らせします。" : "\nメールアドレスがないので、結果は管理者に直接聞いてください。"));
           setMode("login"); btn.disabled = false; return;
         }
-        me = null; profile = null;
+        me = null; profile = null; showLogin = false;
         route();
       } catch (err) {
         console.error(err);
@@ -589,7 +623,7 @@ if ("serviceWorker" in navigator) {
 
 async function logout() {
   try { await disablePush(); } catch (_) {}
-  pushSynced = false;
+  pushSynced = false; showLogin = false;
   await sb.auth.signOut();
 }
 
@@ -623,8 +657,8 @@ async function settingsPage(root) {
 
   const pushCard = profile.is_admin ? null : await pushSettingsCard();
   const avatarCard = profile.is_admin ? null : avatarSettingsCard();
-  const idCard = profile.is_admin ? null : await idChangeCard();
-  const realCard = profile.is_admin ? null : realInfoCard();
+  const idCard = (profile.is_admin || isGuest()) ? null : await idChangeCard();
+  const realCard = (profile.is_admin || isGuest()) ? null : realInfoCard();
   root.append(topbar("設定", { back: true }), el("main", { class: "wrap" },
     ...(avatarCard ? [avatarCard] : []),
     ...(pushCard ? [pushCard] : []),
@@ -632,14 +666,18 @@ async function settingsPage(root) {
       el("div", { class: "sub" }, "ログイン中のID"),
       el("h2", {}, "@" + profile.login_id),
       el("label", {}, "名前", nameIn), saveName),
-    el("div", { class: "card" },
+    ...(isGuest() ? [el("div", { class: "card" }, el("h2", {}, "ゲストで参加中"),
+      el("p", { class: "sub", style: "line-height:1.7" }, "写真・動画を撮ることと、見ることができます。コメント・フレンド・グループを作ることはできません。⚠ ログアウトするか、アプリのデータを消すと、同じゲストには戻れません。"))] : [el("div", { class: "card" },
       el("h2", {}, "パスワードを変える"),
       el("label", {}, "新しいパスワード（6桁の数字）", pw1),
-      el("label", {}, "もう一度", pw2), savePw),
+      el("label", {}, "もう一度", pw2), savePw)]),
     ...(realCard ? [realCard] : []),
     ...(idCard ? [idCard] : []),
-    ...(profile.is_admin ? [] : [el("a", { class: "btn ghost big", href: "#/rejected" }, "拒否中のグループ")]),
-    el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+    ...((profile.is_admin || isGuest()) ? [] : [el("a", { class: "btn ghost big", href: "#/rejected" }, "拒否中のグループ")]),
+    el("button", { class: "btn ghost big", onclick: () => {
+      if (isGuest() && !confirm("ゲストのままログアウトすると、同じゲストには戻れません。\nログアウトしますか？")) return;
+      logout();
+    } }, "ログアウト")));
 }
 
 // アイコン（写真・または絵文字と色）の設定
@@ -813,7 +851,7 @@ async function friendsPage(root) {
     const [fr, bl, pr] = await Promise.all([
       sb.from("friendships").select("*"),
       sb.from("blocks").select("*"),
-      sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color,avatar_photo")
+      sb.from("profiles").select("user_id,login_id,display_name,is_admin,is_guest,avatar,avatar_color,avatar_photo")
     ]);
     if (fr.error) { body.replaceChildren(el("p", { class: "empty" }, "読み込めませんでした：" + fr.error.message)); return; }
     const prof = Object.fromEntries((pr.data || []).map(p => [p.user_id, p]));
@@ -900,16 +938,16 @@ async function homePage(root) {
     unread = (nn || []).length;
   } catch {}
   const bellLink = el("a", { class: "icon", href: "#/notifications", title: "通知", style: "font-size:22px" }, "🔔", unread ? el("span", { class: "badge" }, unread > 99 ? "99+" : unread) : null);
-  const friendsLink = el("a", { class: "icon", href: "#/friends", title: "フレンド", style: "font-size:22px" }, "👫", pending ? el("span", { class: "badge" }, pending) : null);
+  const friendsLink = isGuest() ? null : el("a", { class: "icon", href: "#/friends", title: "フレンド", style: "font-size:22px" }, "👫", pending ? el("span", { class: "badge" }, pending) : null);
   const card = (g, cls) => el("a", { class: "gcard" + (cls ? " " + cls : ""), href: "#/g/" + g.id }, el("span", { class: "gname" }, g.name), el("span", { class: "chev" }, "›"));
   root.append(
-    topbar(APP_NAME, { actions: [bellLink, friendsLink, gearLink()] }),
+    topbar(APP_NAME, { actions: [bellLink, ...(friendsLink ? [friendsLink] : []), gearLink()] }),
     el("main", { class: "wrap" },
       installTip(),
       active.length
         ? el("div", { class: "glist" }, active.map(g => card(g)))
-        : el("p", { class: "empty" }, "まだグループがありません。", el("br"), "グループを作って、友達を招待しよう！"),
-      el("button", { class: "btn big", onclick: createGroup }, "＋ グループを作る"),
+        : el("p", { class: "empty" }, "まだグループがありません。", el("br"), isGuest() ? "招待リンクを開くと、グループに参加できます。" : "グループを作って、友達を招待しよう！"),
+      isGuest() ? null : el("button", { class: "btn big", onclick: createGroup }, "＋ グループを作る"),
       archived.length ? el("details", { class: "arch" }, el("summary", {}, `アーカイブ済み（${archived.length}）`), el("div", { class: "glist" }, archived.map(g => card(g, "arc")))) : null
     )
   );
@@ -966,7 +1004,7 @@ async function groupPage(root, gid) {
   const [gr, mr, pr, fr] = await Promise.all([
     sb.from("groups").select("*").eq("id", gid).maybeSingle(),
     sb.from("members").select("user_id").eq("group_id", gid),
-    sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color,avatar_photo"),
+    sb.from("profiles").select("user_id,login_id,display_name,is_admin,is_guest,avatar,avatar_color,avatar_photo"),
     sb.from("friendships").select("requester_id,addressee_id,status")
   ]);
   const frOther = f => (f.requester_id === me.id ? f.addressee_id : f.requester_id);
@@ -1008,7 +1046,7 @@ async function groupPage(root, gid) {
       feed.replaceChildren(el("p", { class: "empty" }, archived ? "投稿はありません。" : "まだ投稿がありません。", archived ? null : [el("br"), "下のカメラボタンで最初の1枚を撮ろう📷"]));
       return;
     }
-    const ctx = { names, profs, isOwner, archived, reload: loadFeed };
+    const ctx = { names, profs, isOwner, archived, guest: isGuest(), reload: loadFeed };
     feed.replaceChildren(
       ...posts.map(p => postCard(p, comments.filter(c => c.post_id === p.id), urls[p.media_path], ctx)),
       ...(more ? [el("button", { class: "btn ghost", onclick: () => { limit += 20; loadFeed(); } }, "もっと見る")] : [])
@@ -1117,14 +1155,14 @@ async function groupPage(root, gid) {
         el("div", { class: "rows" }, [...memberIds].map(id => el("div", { class: "rowi" },
           el("div", { class: "who2 wa" }, avatarEl(profs[id], "sm"), el("span", {}, names[id] || "?", id === group.owner_id ? el("small", {}, "　作成者") : null)),
           el("div", { class: "ops" },
-            (id !== me.id && profs[id] && !profs[id].is_admin && !friendIds.has(id))
+            (!isGuest() && id !== me.id && profs[id] && !profs[id].is_admin && !profs[id].is_guest && !friendIds.has(id))
               ? (pendingIds.has(id)
                   ? el("small", {}, "申請中")
                   : el("button", { class: "btn ghost sm", onclick: () => friendReq(id) }, "フレンド申請"))
               : null,
             (isOwner && id !== me.id) ? el("button", { class: "btn ghost sm", onclick: () => removeMember(id) }, "外す") : null))))
       ];
-      if (!archived) {
+      if (!archived && !isGuest()) {
         kids.push(el("div", { class: "sub", style: "margin-top:16px" }, "フレンドを追加（リンクなしで招待）"));
         kids.push(addable.length
           ? el("div", { class: "rows" }, addable.map(p => el("div", { class: "rowi" },
@@ -1139,7 +1177,7 @@ async function groupPage(root, gid) {
         kids.push(el("button", { class: "btn ghost big", onclick: toggleArchive }, archived ? "アーカイブを解除する" : "🗄 このグループをアーカイブする"));
       } else {
         kids.push(el("button", { class: "btn ghost big", onclick: leaveGroup }, "グループを抜ける"));
-        kids.push(el("button", { class: "btn ghost big", onclick: rejectGroup }, "🚫 拒否して抜ける（二度と追加されない）"));
+        if (!isGuest()) kids.push(el("button", { class: "btn ghost big", onclick: rejectGroup }, "🚫 拒否して抜ける（二度と追加されない）"));
       }
       if (isOwner) kids.push(el("button", { class: "btn danger big", onclick: deleteGroup }, "🗑 このグループを削除する"));
       kids.push(el("button", { class: "btn big", onclick: () => overlay.remove() }, "閉じる"));
@@ -1159,6 +1197,7 @@ async function groupPage(root, gid) {
       ]
     }),
     el("main", { class: "wrap" },
+      isGuest() ? el("div", { class: "banner" }, "ゲストで参加中です。撮ることと見ることができます。") : null,
       archived ? el("div", { class: "banner" }, "🗄 このグループはアーカイブ済みです。見るのと保存だけできます。", el("br"), "削除はグループを作った人だけができます。") : null,
       feed),
     ...(archived ? [] : [el("button", { class: "fab", title: "撮影", onclick: () => openCamera(gid, loadFeed) }, "📷")])
@@ -1195,7 +1234,7 @@ function postCard(p, initialComments, url, ctx) {
     renderComments();
   }
   const inp = el("input", { type: "text", maxlength: 300, placeholder: "コメントを書く…" });
-  const cform = archived ? null : el("form", {
+  const cform = (archived || ctx.guest) ? null : el("form", {
     class: "cform",
     onsubmit: async e => {
       e.preventDefault();
