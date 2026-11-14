@@ -58,7 +58,7 @@ a{color:inherit}
 .card + .card{margin-top:14px}
 .card h2{margin:4px 0 12px}
 label{display:block;font-size:13px;color:var(--sub);margin:10px 0 0}
-input[type=text],input[type=password]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+input[type=text],input[type=password],input[type=email]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
 .tabs{display:flex;gap:8px;margin-bottom:4px}
 .tabs button{flex:1;padding:10px;border-radius:999px;border:1px solid var(--line);background:transparent;font-weight:700;cursor:pointer}
 .tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -368,6 +368,7 @@ function authMessage(err) {
   if (/already registered|already been registered|user_already_exists/i.test(m)) return "このIDはもう登録されています。ログインしてください";
   if (/Database error/i.test(m)) return "このIDは発行されていません。管理者に確認してください";
   if (/rate limit|too many/i.test(m)) return "試行回数が多すぎます。少し待ってからやり直してください";
+  if (/[ぁ-んァ-ヶ一-龥]/.test(m)) return m;
   return "うまくいきませんでした：" + m;
 }
 
@@ -390,10 +391,11 @@ async function route() {
       if (!(me && profile)) {
         loginPage(root);
       } else {
-        if (!profile.is_admin && !pushSynced) { pushSynced = true; syncPush(); }
+        if (!profile.is_admin && !pushSynced && (!profile.reg_status || profile.reg_status === "approved")) { pushSynced = true; syncPush(); }
         const hash = location.hash || "#/";
         let m;
-        if (hash === "#/settings") refresh = await settingsPage(root);
+        if (!profile.is_admin && profile.reg_status && profile.reg_status !== "approved") pendingPage(root);
+        else if (hash === "#/settings") refresh = await settingsPage(root);
         else if (profile.is_admin) refresh = await adminNoticePage(root);
         else if (hash === "#/friends") refresh = await friendsPage(root);
         else if (hash === "#/notifications") refresh = await notificationsPage(root);
@@ -418,45 +420,100 @@ window.addEventListener("hashchange", route);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && refreshHook) refreshHook(); });
 
 // ====== ログイン / 登録 ======
+// ====== 承認待ち ======
+function pendingPage(root) {
+  const rejected = profile.reg_status === "rejected";
+  const box = el("main", { class: "wrap" },
+    el("div", { class: "card", style: "text-align:center" },
+      el("div", { style: "font-size:46px" }, rejected ? "🙇" : "⏳"),
+      el("h2", {}, rejected ? "承認されませんでした" : "承認待ちです"),
+      el("p", { class: "sub", style: "line-height:1.8" }, rejected
+        ? "今回は登録が承認されませんでした。心当たりがない場合は、管理者に直接聞いてください。"
+        : "管理者が確認しています。承認されるとこの画面が自動で切り替わります。しばらくお待ちください。"),
+      el("button", { class: "btn big", onclick: () => { me = null; profile = null; route(); } }, "更新する"),
+      el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
+  root.append(topbar(APP_NAME), box);
+  const t = setInterval(async () => {
+    if (!document.body.contains(box)) { clearInterval(t); return; }
+    const { data } = await sb.from("profiles").select("reg_status").eq("user_id", me.id).maybeSingle();
+    if (data && data.reg_status !== profile.reg_status) { clearInterval(t); me = null; profile = null; route(); }
+  }, 10000);
+}
+
+// ====== ログイン画面 ======
 function loginPage(root) {
   let mode = "login";
-  const idIn = el("input", { type: "text", maxlength: 20, placeholder: "例：taro", autocapitalize: "none", autocorrect: "off", spellcheck: "false", autocomplete: "username" });
-  const nameIn = el("input", { type: "text", maxlength: 20, placeholder: "みんなに表示される名前", autocomplete: "off" });
+  const mk = (ph, extra) => el("input", Object.assign({ type: "text", maxlength: 20, placeholder: ph, autocomplete: "off" }, extra || {}));
+  const lastIn = mk("例：山田"), firstIn = mk("例：太郎");
+  const affIn = mk("例：○○高校 / ○○大学 / 社会人", { maxlength: 40 });
+  const idIn = mk("例：taro", { autocapitalize: "none", autocorrect: "off", spellcheck: "false", autocomplete: "username" });
+  const nickIn = mk("みんなに表示される名前");
+  const mailIn = mk("例：taro@example.com（なくてもOK）", { type: "email", maxlength: 100, inputmode: "email" });
   const pwIn = pwInput("6桁の数字", "current-password");
   const pw2In = pwInput("もう一度入れてください");
-  const nameLabel = el("label", {}, "あなたの名前", nameIn);
-  const pw2Label = el("label", {}, "パスワードの確認", pw2In);
   const btn = el("button", { class: "btn big", type: "submit" }, "ログイン");
   const hint = el("p", { class: "note" }, "");
-  const tLogin = el("button", { type: "button", class: "on", onclick: () => setMode("login") }, "ログイン");
-  const tReg = el("button", { type: "button", onclick: () => setMode("register") }, "はじめて登録");
+  const link = el("button", { type: "button", class: "btn ghost big", style: "font-size:14px" }, "");
+  const tLogin = el("button", { type: "button", onclick: () => setMode("login") }, "ログイン");
+  const tReg = el("button", { type: "button", onclick: () => setMode("apply") }, "新規登録");
+  const body = el("div");
+  const L = (t, i) => el("label", {}, t, i);
 
   function setMode(m) {
     mode = m;
-    tLogin.className = m === "login" ? "on" : "";
-    tReg.className = m === "register" ? "on" : "";
-    nameLabel.style.display = pw2Label.style.display = m === "register" ? "block" : "none";
-    btn.textContent = m === "register" ? "登録してはじめる" : "ログイン";
-    pwIn.setAttribute("autocomplete", m === "register" ? "new-password" : "current-password");
-    hint.textContent = m === "register"
-      ? "管理者から教えてもらったIDを入れて、自分で決めた6桁の数字をパスワードにしてください。パスワードは忘れないようにメモしておいてください。"
-      : "パスワードを忘れたときは、管理者に再設定を頼んでください。";
+    tLogin.className = (m === "login" || m === "reset") ? "on" : "";
+    tReg.className = (m === "apply" || m === "issued") ? "on" : "";
+    pwIn.setAttribute("autocomplete", m === "login" ? "current-password" : "new-password");
+    const pwLabel = m === "reset" ? "新しいパスワード（6桁の数字）" : "パスワード（6桁の数字）";
+    const fields = {
+      login: () => [L("ID", idIn), L(pwLabel, pwIn)],
+      apply: () => [L("苗字", lastIn), L("名前", firstIn), L("所属（学校名。社会人の方は「社会人」）", affIn), L("希望のID（英小文字・数字・_ の3〜20文字）", idIn),
+              L("ニックネーム（みんなに表示されます）", nickIn), L(pwLabel, pwIn), L("パスワードの確認", pw2In)],
+      issued: () => [L("ID", idIn), L("あなたの名前（みんなに表示されます）", nickIn), L(pwLabel, pwIn), L("パスワードの確認", pw2In)],
+      reset: () => [L("苗字", lastIn), L("名前", firstIn), L("所属（学校名。社会人の方は「社会人」）", affIn), L("ID", idIn),
+              L("メールアドレス（結果を知らせます。なくてもOK）", mailIn), L(pwLabel, pwIn), L("パスワードの確認", pw2In)]
+    }[m]();
+    body.replaceChildren(...fields);
+    btn.textContent = { login: "ログイン", apply: "登録を申請する", issued: "登録してはじめる", reset: "再設定を申請する" }[m];
+    hint.textContent = {
+      login: "",
+      apply: "管理者が確認して承認すると、使えるようになります。苗字・名前・所属は管理者だけが見ます。希望のID・パスワード・ニックネームは、管理者には見えません。",
+      issued: "管理者から教えてもらったIDを入れて、自分で決めた6桁の数字をパスワードにしてください。",
+      reset: "苗字・名前・IDが登録と1つでも違うと、申請できません。ここで決めたパスワードは、管理者が承認すると使えるようになります。管理者にはパスワードは見えません。"
+    }[m];
+    if (m === "login") { link.textContent = "パスワードを忘れた方はこちら"; link.onclick = () => setMode("reset"); }
+    else if (m === "apply") { link.textContent = "管理者からIDをもらっている方はこちら"; link.onclick = () => setMode("issued"); }
+    else if (m === "issued") { link.textContent = "新規登録の申請にもどる"; link.onclick = () => setMode("apply"); }
+    else { link.textContent = "ログインにもどる"; link.onclick = () => setMode("login"); }
   }
 
   const form = el("form", {
     class: "card",
     onsubmit: async e => {
       e.preventDefault();
-      const id = normId(idIn.value), pw = pwIn.value, name = nameIn.value.trim();
+      const id = normId(idIn.value), pw = pwIn.value, nick = nickIn.value.trim();
+      const last = lastIn.value.trim(), first = firstIn.value.trim(), aff = affIn.value.trim();
       if (!ID_RE.test(id)) { toast("IDは英小文字・数字・_ の3〜20文字です"); return; }
       if (!PW_RE.test(pw)) { toast("パスワードは6桁の数字です"); return; }
-      if (mode === "register") {
-        if (!name) { toast("名前を入れてください"); return; }
-        if (pw !== pw2In.value) { toast("パスワードが一致しません"); return; }
-      }
+      if (mode !== "login" && pw !== pw2In.value) { toast("パスワードが一致しません"); return; }
+      if ((mode === "apply" || mode === "reset") && !(last && first && aff)) { toast("苗字・名前・所属を入れてください"); return; }
+      if ((mode === "apply" || mode === "issued") && !nick) { toast("名前（ニックネーム）を入れてください"); return; }
       btn.disabled = true;
       try {
-        if (mode === "login") await doLogin(id, pw); else await doRegister(id, name, pw);
+        if (mode === "login") await doLogin(id, pw);
+        else if (mode === "issued") await doRegister(id, nick, pw);
+        else if (mode === "apply") {
+          const { error } = await sb.rpc("request_registration", { p_last: last, p_first: first, p_affil: aff, p_login_id: id });
+          if (error) throw error;
+          await doRegister(id, nick, pw);
+        } else {
+          const { data, error } = await sb.rpc("request_password_reset", {
+            p_login_id: id, p_last: last, p_first: first, p_affil: aff, p_email: mailIn.value.trim(), p_password: pw });
+          if (error) throw error;
+          if (data !== "ok") { toast("入力が登録と一致しません。苗字・名前・IDを確認してください"); btn.disabled = false; return; }
+          alert("再設定を申請しました。\n管理者が確認します。" + (mailIn.value.trim() ? "\n結果はメールでお知らせします。" : "\nメールアドレスがないので、結果は管理者に直接聞いてください。"));
+          setMode("login"); btn.disabled = false; return;
+        }
         me = null; profile = null;
         route();
       } catch (err) {
@@ -465,15 +522,7 @@ function loginPage(root) {
         btn.disabled = false;
       }
     }
-  },
-    el("div", { class: "tabs" }, tLogin, tReg),
-    el("label", {}, "ID", idIn),
-    nameLabel,
-    el("label", {}, "パスワード（6桁の数字）", pwIn),
-    pw2Label,
-    btn,
-    hint
-  );
+  }, el("div", { class: "tabs" }, tLogin, tReg), body, btn, hint, link);
   setMode("login");
   root.append(topbar(APP_NAME), el("main", { class: "wrap" },
     el("p", { class: "empty", style: "padding:18px 12px 8px" }, "友達とだけ共有する、思い出カメラ📷"),
@@ -575,6 +624,7 @@ async function settingsPage(root) {
   const pushCard = profile.is_admin ? null : await pushSettingsCard();
   const avatarCard = profile.is_admin ? null : avatarSettingsCard();
   const idCard = profile.is_admin ? null : await idChangeCard();
+  const realCard = profile.is_admin ? null : realInfoCard();
   root.append(topbar("設定", { back: true }), el("main", { class: "wrap" },
     ...(avatarCard ? [avatarCard] : []),
     ...(pushCard ? [pushCard] : []),
@@ -586,6 +636,7 @@ async function settingsPage(root) {
       el("h2", {}, "パスワードを変える"),
       el("label", {}, "新しいパスワード（6桁の数字）", pw1),
       el("label", {}, "もう一度", pw2), savePw),
+    ...(realCard ? [realCard] : []),
     ...(idCard ? [idCard] : []),
     ...(profile.is_admin ? [] : [el("a", { class: "btn ghost big", href: "#/rejected" }, "拒否中のグループ")]),
     el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
@@ -629,6 +680,28 @@ function avatarSettingsCard() {
       profile.avatar = emoji || null; profile.avatar_color = color; profile.avatar_photo = photo;
       toast("アイコンを保存しました");
     } }, "アイコンを保存"));
+}
+
+ // 本名・所属
+function realInfoCard() {
+  if (profile.last_name) {
+    return el("div", { class: "card" }, el("h2", {}, "本名・所属"),
+      el("p", { class: "sub", style: "line-height:1.7" }, `${profile.last_name} ${profile.first_name}（${profile.affiliation}）`),
+      el("p", { class: "note" }, "パスワード再設定の本人確認に使います。管理者だけが見られます。変更したいときは管理者に頼んでください。"));
+  }
+  const l = el("input", { type: "text", maxlength: 20, placeholder: "苗字" }), f = el("input", { type: "text", maxlength: 20, placeholder: "名前" });
+  const a = el("input", { type: "text", maxlength: 40, placeholder: "所属（学校名。社会人の方は「社会人」）" });
+  return el("div", { class: "card" }, el("h2", {}, "本名・所属を登録"),
+    el("p", { class: "note", style: "margin-top:0" }, "パスワードを忘れたときの本人確認に使います。管理者だけが見られます。登録は1回だけで、あとから変えるには管理者に頼みます。"),
+    el("label", {}, "苗字", l), el("label", {}, "名前", f), el("label", {}, "所属", a),
+    el("button", { class: "btn big", onclick: async () => {
+      if (!(l.value.trim() && f.value.trim() && a.value.trim())) { toast("苗字・名前・所属を入れてください"); return; }
+      if (!confirm("この内容で登録しますか？\n登録のあとは自分では変えられません。")) return;
+      const { error } = await sb.rpc("set_my_realinfo", { p_last: l.value, p_first: f.value, p_affil: a.value });
+      if (error) { toast(error.message); return; }
+      profile.last_name = l.value.trim(); profile.first_name = f.value.trim(); profile.affiliation = a.value.trim();
+      toast("登録しました"); route();
+    } }, "登録する"));
 }
 
 // IDの変更届
