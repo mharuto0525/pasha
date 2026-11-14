@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="ぱしゃっと">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://krkpgjuxrlhllttluinr.supabase.co" crossorigin>
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>ぱしゃっと</title>
@@ -125,10 +127,15 @@ details.arch .glist{margin-top:8px}
 .shutter.video i{background:#ff3b50}
 .shutter.rec i{width:34px;height:34px;border-radius:8px;background:#ff3b50}
 .shutter:disabled{opacity:.4}
+.boot{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.boot-logo{font-size:46px;animation:bootp 1.2s ease-in-out infinite}
+.boot-name{font-weight:700;font-size:20px}
+.boot-sub{color:var(--sub);font-size:13px}
+@keyframes bootp{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div class="boot"><div class="boot-logo">📷</div><div class="boot-name">ぱしゃっと</div><div class="boot-sub">読み込み中…</div></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -350,6 +357,7 @@ async function route() {
       if (!(me && profile)) {
         loginPage(root);
       } else {
+        if (!profile.is_admin && !pushSynced) { pushSynced = true; syncPush(); }
         const hash = location.hash || "#/";
         let m;
         if (hash === "#/settings") refresh = await settingsPage(root);
@@ -477,10 +485,13 @@ async function disablePush() {
 async function syncPush() {
   try {
     if (!pushSupported() || Notification.permission !== "granted") return;
-    const sub = await currentSub();
-    if (sub) await saveSub(sub);
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
+    await saveSub(sub);
   } catch (_) {}
 }
+let pushSynced = false;
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", e => {
     if (e.data && e.data.type === "nav" && typeof e.data.hash === "string") {
@@ -491,6 +502,7 @@ if ("serviceWorker" in navigator) {
 
 async function logout() {
   try { await disablePush(); } catch (_) {}
+  pushSynced = false;
   await sb.auth.signOut();
 }
 
