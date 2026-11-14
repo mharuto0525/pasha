@@ -80,6 +80,7 @@ details.arch .glist{margin-top:8px}
 .post{background:transparent}
 .phead{display:flex;align-items:center;gap:8px;padding:0 4px 8px}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
 .avatar.lg{width:56px;height:56px;font-size:28px}
 .avatar.sm{width:26px;height:26px;font-size:13px}
 .who2.wa{display:flex;align-items:center;gap:8px}
@@ -247,7 +248,24 @@ const AV_COLORS = ["#ff6b81","#ff9f68","#f5c542","#6cc788","#4db6e8","#7b8cff","
 function avatarEl(p, size) {
   const nm = (p && p.display_name) || "?";
   return el("div", { class: "avatar" + (size ? " " + size : ""), style: "background:" + ((p && p.avatar_color) || "var(--accent)") },
-    (p && p.avatar) || [...nm][0] || "?");
+    (p && p.avatar_photo) ? el("img", { src: p.avatar_photo, alt: "" }) : ((p && p.avatar) || [...nm][0] || "?"));
+}
+// 選んだ写真を、正方形・小さく（約160px）して文字データにする
+function photoToAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight), out = 160;
+      const c = document.createElement("canvas");
+      c.width = c.height = out;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, out, out);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
+    img.src = url;
+  });
 }
 
 function pwInput(placeholder, autocomplete = "off") {
@@ -573,25 +591,42 @@ async function settingsPage(root) {
     el("button", { class: "btn ghost big", onclick: logout }, "ログアウト")));
 }
 
-// アイコン（絵文字と色）の設定
+// アイコン（写真・または絵文字と色）の設定
 function avatarSettingsCard() {
-  let emoji = profile.avatar || "", color = profile.avatar_color || AV_COLORS[0];
+  let emoji = profile.avatar || "", color = profile.avatar_color || AV_COLORS[0], photo = profile.avatar_photo || null;
   const preview = el("div", { style: "display:flex;align-items:center;gap:12px" });
+  const fileIn = el("input", { type: "file", accept: "image/*", style: "display:none" });
+  const photoBtns = el("div", { style: "display:flex;gap:8px;margin-top:10px" });
   const ePick = el("div", { class: "apick" }), cPick = el("div", { class: "apick colors" });
+  const small = el("div");
   function draw() {
-    preview.replaceChildren(avatarEl({ display_name: profile.display_name, avatar: emoji, avatar_color: color }, "lg"),
+    preview.replaceChildren(avatarEl({ display_name: profile.display_name, avatar: emoji, avatar_color: color, avatar_photo: photo }, "lg"),
       el("div", { class: "sub" }, "名前の横や、投稿に表示されます"));
+    photoBtns.replaceChildren(
+      el("button", { class: "btn", style: "flex:1", onclick: () => fileIn.click() }, "📷 写真を選ぶ"),
+      photo ? el("button", { class: "btn ghost", onclick: () => { photo = null; draw(); } }, "写真をやめる") : null);
+    small.style.display = photo ? "none" : "block";
     ePick.replaceChildren(el("button", { class: emoji ? "" : "sel", onclick: () => { emoji = ""; draw(); } }, [...profile.display_name][0] || "？"),
       ...AV_EMOJI.map(x => el("button", { class: emoji === x ? "sel" : "", onclick: () => { emoji = x; draw(); } }, x)));
     cPick.replaceChildren(...AV_COLORS.map(c => el("button", { class: color === c ? "sel" : "", style: "background:" + c, onclick: () => { color = c; draw(); } })));
   }
+  fileIn.onchange = async () => {
+    const f = fileIn.files && fileIn.files[0];
+    fileIn.value = "";
+    if (!f) return;
+    try { photo = await photoToAvatar(f); draw(); }
+    catch { toast("この写真は使えません"); }
+  };
+  small.append(el("label", {}, "写真がないときの絵文字"), ePick, el("label", {}, "色"), cPick);
   draw();
-  return el("div", { class: "card" }, el("h2", {}, "アイコン"), preview,
-    el("label", {}, "絵文字"), ePick, el("label", {}, "色"), cPick,
+  return el("div", { class: "card" }, el("h2", {}, "アイコン"), preview, photoBtns, fileIn, small,
     el("button", { class: "btn big", onclick: async () => {
-      const { error } = await sb.rpc("set_my_avatar", { p_avatar: emoji || null, p_color: color });
-      if (error) { toast("保存できませんでした"); return; }
-      profile.avatar = emoji || null; profile.avatar_color = color;
+      const [a, b] = await Promise.all([
+        sb.rpc("set_my_avatar", { p_avatar: emoji || null, p_color: color }),
+        sb.rpc("set_my_avatar_photo", { p_data: photo })
+      ]);
+      if (a.error || b.error) { toast("保存できませんでした"); return; }
+      profile.avatar = emoji || null; profile.avatar_color = color; profile.avatar_photo = photo;
       toast("アイコンを保存しました");
     } }, "アイコンを保存"));
 }
@@ -705,7 +740,7 @@ async function friendsPage(root) {
     const [fr, bl, pr] = await Promise.all([
       sb.from("friendships").select("*"),
       sb.from("blocks").select("*"),
-      sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color")
+      sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color,avatar_photo")
     ]);
     if (fr.error) { body.replaceChildren(el("p", { class: "empty" }, "読み込めませんでした：" + fr.error.message)); return; }
     const prof = Object.fromEntries((pr.data || []).map(p => [p.user_id, p]));
@@ -858,7 +893,7 @@ async function groupPage(root, gid) {
   const [gr, mr, pr, fr] = await Promise.all([
     sb.from("groups").select("*").eq("id", gid).maybeSingle(),
     sb.from("members").select("user_id").eq("group_id", gid),
-    sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color"),
+    sb.from("profiles").select("user_id,login_id,display_name,is_admin,avatar,avatar_color,avatar_photo"),
     sb.from("friendships").select("requester_id,addressee_id,status")
   ]);
   const frOther = f => (f.requester_id === me.id ? f.addressee_id : f.requester_id);
