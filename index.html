@@ -80,6 +80,17 @@ details.arch .glist{margin-top:8px}
 .post{background:transparent}
 .phead{display:flex;align-items:center;gap:8px;padding:0 4px 8px}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.lock{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px}
+.lock h2{margin:0;font-size:18px}
+.lock .msg{min-height:20px;color:var(--sub);font-size:13px;text-align:center}
+.dots{display:flex;gap:14px;margin:6px 0}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--ink);display:block}
+.dots i.on{background:var(--ink)}
+.pad{display:grid;grid-template-columns:repeat(3,72px);gap:14px}
+.pad button{height:72px;border-radius:50%;border:1px solid var(--line);background:var(--card);font-size:26px;cursor:pointer;padding:0}
+.pad button:active{background:#fff0f3}
+.pad button.ghost{border-color:transparent;background:transparent;font-size:24px}
+select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;width:100%;margin-top:6px}
 .avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
 .avatar.lg{width:56px;height:56px;font-size:28px}
 .avatar.sm{width:26px;height:26px;font-size:13px}
@@ -621,9 +632,184 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+// ====== アプリロック（4桁・6桁の番号、指紋・顔認証） ======
+const LOCK_KEY = "pasha-lock", LOCK_T = "pasha-lock-t";
+const LOCK_DELAYS = [[0, "すぐ"], [60, "1分後"], [300, "5分後"], [1800, "30分後"], [3600, "1時間後"]];
+function lockCfg() { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); } catch (_) { return null; } }
+function saveLock(c) { try { if (c) localStorage.setItem(LOCK_KEY, JSON.stringify(c)); else localStorage.removeItem(LOCK_KEY); } catch (_) {} }
+function touchLockTime() { try { localStorage.setItem(LOCK_T, String(Date.now())); } catch (_) {} }
+const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+const toHex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
+async function pinHash(pin, salt) {
+  return toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin)));
+}
+async function bioAvailable() {
+  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }
+  catch (_) { return false; }
+}
+async function bioRegister() {
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: rnd(32), rp: { name: "ぱしゃっと" },
+    user: { id: rnd(16), name: (profile && profile.login_id) || "user", displayName: (profile && profile.display_name) || "user" },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" }, timeout: 60000 } });
+  return b64(cred.rawId);
+}
+async function bioCheck(id) {
+  await navigator.credentials.get({ publicKey: {
+    challenge: rnd(32), allowCredentials: [{ type: "public-key", id: unb64(id) }], userVerification: "required", timeout: 60000 } });
+  return true;
+}
+
+// 数字キーパッド（番号がそろったら onDone(番号) を呼ぶ）
+function pinPad(len, onDone, bioBtn) {
+  let val = "";
+  const dots = el("div", { class: "dots" });
+  const msg = el("div", { class: "msg" });
+  const pad = el("div", { class: "pad" });
+  let busy = false;
+  function draw() { dots.replaceChildren(...Array.from({ length: len }, (_, i) => el("i", { class: i < val.length ? "on" : "" }))); }
+  async function push(d) {
+    if (busy || val.length >= len) return;
+    val += d; draw();
+    if (val.length === len) {
+      busy = true;
+      const v = val;
+      try { await onDone(v); } finally { val = ""; busy = false; draw(); }
+    }
+  }
+  pad.replaceChildren(
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => el("button", { type: "button", onclick: () => push(String(n)) }, String(n))),
+    bioBtn || el("button", { type: "button", class: "ghost", disabled: true }, ""),
+    el("button", { type: "button", onclick: () => push("0") }, "0"),
+    el("button", { type: "button", class: "ghost", onclick: () => { if (!busy) { val = val.slice(0, -1); draw(); } } }, "⌫"));
+  draw();
+  return { dots, msg, pad };
+}
+
+// 番号を入力してもらうダイアログ（設定画面用）。キャンセルは null
+function askPin(title, len) {
+  return new Promise(resolve => {
+    let overlay;
+    const done = v => { overlay.remove(); resolve(v); };
+    const pp = pinPad(len, v => done(v));
+    overlay = el("div", { class: "overlay" }, el("div", { class: "modal", style: "display:flex;flex-direction:column;align-items:center;gap:14px" },
+      el("h2", {}, title), pp.dots, pp.pad,
+      el("button", { class: "btn ghost", onclick: () => done(null) }, "キャンセル")));
+    document.body.append(overlay);
+  });
+}
+
+let lockEl = null, lockFails = 0, lockUntil = 0;
+function showLock() {
+  const cfg = lockCfg();
+  if (!cfg || lockEl) return;
+  const title = el("h2", {}, "ロック中");
+  let bioBtn = null;
+  async function tryBio() {
+    try { await bioCheck(cfg.bio); unlock(); } catch (_) {}
+  }
+  if (cfg.bio) bioBtn = el("button", { type: "button", class: "ghost", onclick: tryBio, title: "指紋・顔認証" }, "🔓");
+  const pp = pinPad(cfg.len, async v => {
+    if (Date.now() < lockUntil) { pp.msg.textContent = "しばらく待ってからやり直してください"; return; }
+    if (await pinHash(v, cfg.salt) === cfg.hash) { unlock(); return; }
+    lockFails++;
+    if (lockFails >= 5) { lockFails = 0; lockUntil = Date.now() + 30000; pp.msg.textContent = "5回まちがえました。30秒待ってください"; }
+    else pp.msg.textContent = "番号がちがいます";
+  }, bioBtn);
+  function unlock() {
+    lockFails = 0;
+    if (lockEl) { lockEl.remove(); lockEl = null; }
+    touchLockTime();
+  }
+  lockEl = el("div", { class: "lock" }, el("div", { style: "font-size:44px" }, "🔒"), title,
+    el("div", { class: "sub" }, cfg.bio ? "番号か、指紋・顔認証で開きます" : "ロック番号を入れてください"),
+    pp.dots, pp.msg, pp.pad,
+    el("button", { class: "btn ghost", style: "font-size:13px", onclick: async () => {
+      if (!confirm("ロック番号を忘れた場合は、ログアウトして解除します。\nもう一度ログインが必要です。ログアウトしますか？")) return;
+      await logout();
+      if (lockEl) { lockEl.remove(); lockEl = null; }
+    } }, "番号を忘れた（ログアウトして解除）"));
+  document.body.append(lockEl);
+  if (cfg.bio) tryBio();
+}
+function maybeLock() {
+  const c = lockCfg();
+  if (!c || lockEl) return;
+  const last = Number(localStorage.getItem(LOCK_T)) || 0;
+  if (Date.now() - last >= c.delay * 1000) showLock();
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) touchLockTime(); else maybeLock(); });
+
+// 設定画面の「アプリロック」カード
+async function lockSettingsCard() {
+  const box = el("div");
+  const bioOk = await bioAvailable();
+  async function draw() {
+    const cfg = lockCfg();
+    const delaySel = el("select", { onchange: e => { const c = lockCfg(); if (c) { c.delay = Number(e.target.value); saveLock(c); toast("ロックまでの時間を変えました"); } } },
+      ...LOCK_DELAYS.map(([v, t]) => el("option", { value: v, selected: (cfg ? cfg.delay : 60) === v }, t)));
+    if (!cfg) {
+      let len = 4;
+      const l4 = el("button", { type: "button", class: "on" }, "4桁"), l6 = el("button", { type: "button" }, "6桁");
+      l4.onclick = () => { len = 4; l4.className = "on"; l6.className = ""; };
+      l6.onclick = () => { len = 6; l6.className = "on"; l4.className = ""; };
+      box.replaceChildren(
+        el("p", { class: "sub", style: "line-height:1.7" }, "オンにすると、アプリを開くときに、番号" + (bioOk ? "か指紋・顔認証" : "") + "が必要になります。"),
+        el("label", {}, "ロック番号の桁数"), el("div", { class: "tabs" }, l4, l6),
+        el("label", {}, "ロックされるまでの時間（アプリを閉じてから）"), delaySel,
+        el("button", { class: "btn big", onclick: async () => {
+          const a = await askPin("ロック番号を決める", len); if (a === null) return;
+          const b = await askPin("もう一度入れてください", len); if (b === null) return;
+          if (a !== b) { toast("番号が一致しません"); return; }
+          const salt = toHex(rnd(8));
+          const c = { len, salt, hash: await pinHash(a, salt), delay: Number(delaySel.value), bio: null };
+          if (bioOk && confirm("指紋・顔認証でも開けるようにしますか？")) {
+            try { c.bio = await bioRegister(); } catch (e) { console.error(e); toast("指紋・顔認証は設定できませんでした（番号だけで使えます）"); }
+          }
+          saveLock(c); touchLockTime();
+          toast("アプリロックをオンにしました。忘れないようにしてください");
+          draw();
+        } }, "ロックをオンにする"));
+    } else {
+      box.replaceChildren(
+        el("p", { class: "sub", style: "line-height:1.7" }, `オン（${cfg.len}桁${cfg.bio ? "・指紋/顔認証あり" : ""}）`),
+        el("label", {}, "ロックされるまでの時間（アプリを閉じてから）"), delaySel,
+        ...(bioOk ? [el("button", { class: "btn ghost big", onclick: async () => {
+          const c = lockCfg();
+          if (c.bio) { c.bio = null; saveLock(c); toast("指紋・顔認証をやめました"); }
+          else { try { c.bio = await bioRegister(); saveLock(c); toast("指紋・顔認証をオンにしました"); } catch (e) { console.error(e); toast("設定できませんでした"); } }
+          draw();
+        } }, cfg.bio ? "指紋・顔認証をやめる" : "指紋・顔認証も使う")] : []),
+        el("button", { class: "btn ghost big", onclick: async () => {
+          const old = await askPin("今のロック番号", cfg.len); if (old === null) return;
+          if (await pinHash(old, cfg.salt) !== cfg.hash) { toast("番号がちがいます"); return; }
+          const len = cfg.len === 4 ? 6 : 4;
+          const useLen = confirm(`新しい番号は${len}桁にしますか？\nOK：${len}桁　／　キャンセル：${cfg.len}桁のまま`) ? len : cfg.len;
+          const a = await askPin("新しいロック番号", useLen); if (a === null) return;
+          const b = await askPin("もう一度入れてください", useLen); if (b === null) return;
+          if (a !== b) { toast("番号が一致しません"); return; }
+          const salt = toHex(rnd(8));
+          saveLock({ ...cfg, ...lockCfg(), len: useLen, salt, hash: await pinHash(a, salt) });
+          toast("ロック番号を変えました"); draw();
+        } }, "ロック番号を変える"),
+        el("button", { class: "btn ghost big", onclick: async () => {
+          const old = await askPin("今のロック番号", cfg.len); if (old === null) return;
+          if (await pinHash(old, cfg.salt) !== cfg.hash) { toast("番号がちがいます"); return; }
+          saveLock(null); toast("アプリロックをオフにしました"); draw();
+        } }, "ロックをオフにする"));
+    }
+  }
+  await draw();
+  return el("div", { class: "card" }, el("h2", {}, "アプリロック"), box);
+}
+
 async function logout() {
   try { await disablePush(); } catch (_) {}
   pushSynced = false; showLogin = false;
+  saveLock(null);
   await sb.auth.signOut();
 }
 
@@ -659,9 +845,11 @@ async function settingsPage(root) {
   const avatarCard = profile.is_admin ? null : avatarSettingsCard();
   const idCard = (profile.is_admin || isGuest()) ? null : await idChangeCard();
   const realCard = (profile.is_admin || isGuest()) ? null : realInfoCard();
+  const lockCard = profile.is_admin ? null : await lockSettingsCard();
   root.append(topbar("設定", { back: true }), el("main", { class: "wrap" },
     ...(avatarCard ? [avatarCard] : []),
     ...(pushCard ? [pushCard] : []),
+    ...(lockCard ? [lockCard] : []),
     el("div", { class: "card" },
       el("div", { class: "sub" }, "ログイン中のID"),
       el("h2", {}, "@" + profile.login_id),
@@ -1534,6 +1722,7 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").then(() => { if (configured) loadSession().then(ok => { if (ok && profile && !profile.is_admin) syncPush(); }).catch(() => {}); }).catch(() => {});
   });
 }
+maybeLock();
 route();
 </script>
 </body>
