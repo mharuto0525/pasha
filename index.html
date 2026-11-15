@@ -107,6 +107,25 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 .media{aspect-ratio:1/1;background:#2a2420;overflow:hidden}
 .media img,.media video{width:100%;height:100%;object-fit:cover;display:block}
 .cap{padding:16px 0 20px;text-align:center;font-family:"Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif;font-size:19px;color:#4a4038;letter-spacing:.5px}
+.polaroid.f-white{background:#fff}
+.polaroid.f-pink{background:#ffe3ea}
+.polaroid.f-mint{background:#def5e6}
+.polaroid.f-sky{background:#ddecff}
+.polaroid.f-black{background:#2b2724}
+.polaroid.f-black .cap{color:#f3ece4}
+.cap .ct{display:block;font-size:20px;word-break:break-word;padding:0 4px}
+.cap .dt{display:block;font-size:14px;opacity:.7;margin-top:4px}
+.rxbar{display:flex;gap:4px;padding:8px 0 0;flex-wrap:wrap}
+.rxbar button{background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:3px 9px;font-size:15px;cursor:pointer;color:var(--ink)}
+.rxbar button.on{border-color:var(--accent);background:#fff0f3}
+.rxbar button small{font-size:12px;margin-left:3px}
+.rxbar button:disabled{opacity:1;cursor:default}
+.fpick{display:flex;gap:10px;margin:8px 0;justify-content:center;flex-wrap:wrap}
+.fpick button{width:34px;height:34px;border-radius:50%;border:2px solid rgba(128,128,128,.5);cursor:pointer;padding:0}
+.fpick button.sel{box-shadow:0 0 0 3px var(--accent)}
+.cam .opts{padding:12px 16px 0;text-align:center}
+.cam .opts input{width:100%;box-sizing:border-box;border:0;border-radius:12px;padding:10px 12px;font-size:16px;background:rgba(255,255,255,.18);color:#fff;text-align:center}
+.cam .opts input::placeholder{color:rgba(255,255,255,.6)}
 .vbadge{font-size:12px;margin-left:6px;color:var(--sub);font-family:sans-serif}
 .pact{display:flex;gap:16px;align-items:center;padding:12px 4px 4px;font-size:14px}
 .pact button{background:none;border:0;padding:4px 2px;cursor:pointer;color:var(--ink)}
@@ -1189,12 +1208,14 @@ async function inviteShare(group) {
 }
 
 async function groupPage(root, gid) {
-  const [gr, mr, pr, fr] = await Promise.all([
+  const [gr, mr, pr, fr, mu] = await Promise.all([
     sb.from("groups").select("*").eq("id", gid).maybeSingle(),
     sb.from("members").select("user_id").eq("group_id", gid),
     sb.from("profiles").select("user_id,login_id,display_name,is_admin,is_guest,avatar,avatar_color,avatar_photo"),
-    sb.from("friendships").select("requester_id,addressee_id,status")
+    sb.from("friendships").select("requester_id,addressee_id,status"),
+    sb.from("group_mutes").select("group_id").eq("group_id", gid)
   ]);
+  let muted = (mu.data || []).length > 0;
   const frOther = f => (f.requester_id === me.id ? f.addressee_id : f.requester_id);
   const friendIds = new Set((fr.data || []).filter(f => f.status === "accepted").map(frOther));
   const pendingIds = new Set((fr.data || []).filter(f => f.status === "pending").map(frOther));
@@ -1220,21 +1241,23 @@ async function groupPage(root, gid) {
     if (error) { console.error(error); toast("読み込みに失敗しました"); return; }
     const more = rows.length > limit;
     const posts = rows.slice(0, limit);
-    let comments = [];
+    let comments = [], reactions = [];
     const urls = {};
     if (posts.length) {
-      const [c, s] = await Promise.all([
+      const [c, s, rr] = await Promise.all([
         sb.from("comments").select("*").in("post_id", posts.map(p => p.id)).order("created_at"),
-        sb.storage.from("media").createSignedUrls(posts.map(p => p.media_path), 3600)
+        sb.storage.from("media").createSignedUrls(posts.map(p => p.media_path), 3600),
+        sb.from("post_reactions").select("post_id,user_id,emoji").in("post_id", posts.map(p => p.id))
       ]);
       comments = c.data || [];
+      reactions = rr.data || [];
       (s.data || []).forEach(x => { if (x.path && x.signedUrl) urls[x.path] = x.signedUrl; });
     }
     if (!posts.length) {
       feed.replaceChildren(el("p", { class: "empty" }, archived ? "投稿はありません。" : "まだ投稿がありません。", archived ? null : [el("br"), "下のカメラボタンで最初の1枚を撮ろう📷"]));
       return;
     }
-    const ctx = { names, profs, isOwner, archived, guest: isGuest(), reload: loadFeed };
+    const ctx = { names, profs, isOwner, archived, guest: isGuest(), reload: loadFeed, reactions };
     feed.replaceChildren(
       ...posts.map(p => postCard(p, comments.filter(c => c.post_id === p.id), urls[p.media_path], ctx)),
       ...(more ? [el("button", { class: "btn ghost", onclick: () => { limit += 20; loadFeed(); } }, "もっと見る")] : [])
@@ -1335,6 +1358,42 @@ async function groupPage(root, gid) {
       group.invite_code = data;
       toast("招待リンクを作り直しました");
     }
+    async function toggleMute() {
+      const { error } = await sb.rpc("set_group_mute", { p_gid: gid, p_mute: !muted });
+      if (error) { toast(error.message); return; }
+      muted = !muted;
+      toast(muted ? "このグループの新着通知を止めました" : "このグループの新着通知をオンにしました");
+      render();
+    }
+    async function bulkSave() {
+      const { data: rows, error } = await sb.from("posts").select("*").eq("group_id", gid).order("taken_at", { ascending: true });
+      if (error || !rows || !rows.length) { toast("保存できる投稿がありません"); return; }
+      if (!confirm(`${rows.length}件を1つのzipにまとめます。\n多いと時間がかかります。このまま画面を開いておいてください。`)) return;
+      const { data: sg } = await sb.storage.from("media").createSignedUrls(rows.map(p => p.media_path), 3600);
+      const um = {};
+      (sg || []).forEach(x => { if (x.path && x.signedUrl) um[x.path] = x.signedUrl; });
+      const files = [];
+      let skipped = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const p = rows[i];
+        toast(`準備中… ${i + 1}/${rows.length}`);
+        try {
+          if (!um[p.media_path]) throw new Error("no url");
+          const blob = await (await fetch(um[p.media_path])).blob();
+          const n = String(i + 1).padStart(3, "0");
+          if (p.media_type === "photo") {
+            const pb = await polaroidBlob(blob, p.taken_at, names[p.user_id] || "", p.caption, p.frame);
+            files.push({ name: `${n}_${stamp(p.taken_at)}.png`, data: new Uint8Array(await pb.arrayBuffer()) });
+          } else {
+            const ext = (p.media_path.split(".").pop() || "mp4").toLowerCase();
+            files.push({ name: `${n}_${stamp(p.taken_at)}.${ext}`, data: new Uint8Array(await blob.arrayBuffer()) });
+          }
+        } catch (e) { console.error(e); skipped++; }
+      }
+      if (!files.length) { toast("保存できませんでした"); return; }
+      await deliver(makeZip(files), `pasha_${stamp(new Date())}.zip`);
+      toast(skipped ? `${skipped}件は保存できませんでした` : "zipを作りました");
+    }
     function render() {
       const addable = profiles.filter(p => !p.is_admin && friendIds.has(p.user_id) && !memberIds.has(p.user_id));
       const kids = [
@@ -1359,6 +1418,8 @@ async function groupPage(root, gid) {
           : el("p", { class: "note" }, "追加できるフレンドがいません。", el("a", { href: "#/friends", style: "color:var(--accent);font-weight:700", onclick: () => overlay.remove() }, "フレンド画面で申請する")));
         kids.push(el("button", { class: "btn ghost big", onclick: () => inviteShare(group) }, "🔗 招待リンクを共有"));
       }
+      kids.push(el("button", { class: "btn ghost big", onclick: bulkSave }, "📦 写真・動画をまとめて保存（zip）"));
+      if (!isGuest()) kids.push(el("button", { class: "btn ghost big", onclick: toggleMute }, muted ? "🔕 新着通知：オフ（タップでオンに）" : "🔔 新着通知：オン（タップでオフに）"));
       if (isOwner) {
         kids.push(el("button", { class: "btn ghost big", onclick: renameGroup }, "✏ グループ名を変更する"));
         if (!archived) kids.push(el("button", { class: "btn ghost big", onclick: resetInvite }, "🔗 招待リンクを作り直す"));
@@ -1445,15 +1506,61 @@ function postCard(p, initialComments, url, ctx) {
     reload();
   }
 
+  // リアクション
+  const rx = [...(ctx.reactions || []).filter(r => r.post_id === p.id)];
+  const rxbar = el("div", { class: "rxbar" });
+  const canReact = !archived && !ctx.guest;
+  function renderRx() {
+    const myr = rx.find(r => r.user_id === me.id);
+    rxbar.replaceChildren(...REACTS.map(e => {
+      const n = rx.filter(r => r.emoji === e).length;
+      if (!canReact && !n) return null;
+      const b = el("button", { type: "button", class: myr && myr.emoji === e ? "on" : "", disabled: !canReact, onclick: () => toggleRx(e) }, e, n ? el("small", {}, String(n)) : null);
+      return b;
+    }).filter(Boolean));
+  }
+  async function toggleRx(e) {
+    const i = rx.findIndex(r => r.user_id === me.id);
+    const same = i >= 0 && rx[i].emoji === e;
+    const { error } = await sb.rpc("set_reaction", { p_post: p.id, p_emoji: same ? "" : e });
+    if (error) { toast(error.message); return; }
+    if (i >= 0) rx.splice(i, 1);
+    if (!same) rx.push({ post_id: p.id, user_id: me.id, emoji: e });
+    renderRx();
+  }
+  renderRx();
+  // 編集（ひとこと・枠）
+  function editPost() {
+    let overlay;
+    const cap = el("input", { type: "text", maxlength: 40, value: p.caption || "", placeholder: "ひとこと（40字まで）" });
+    const fp = framePicker(p.frame || "cream");
+    const save = el("button", { class: "btn", type: "button", onclick: async () => {
+      save.disabled = true;
+      const { error } = await sb.rpc("update_post", { p_id: p.id, p_caption: cap.value, p_frame: fp.get() });
+      if (error) { toast(error.message); save.disabled = false; return; }
+      overlay.remove(); toast("変更しました"); reload();
+    } }, "保存");
+    overlay = el("div", { class: "overlay", onclick: e => { if (e.target === overlay) overlay.remove(); } },
+      el("div", { class: "modal" }, el("h2", {}, "ひとこと・枠を変更"),
+        el("label", {}, "ひとこと", cap),
+        el("div", { class: "sub", style: "margin-top:10px" }, "ポラロイドの枠の色"), fp,
+        el("div", { class: "row" }, el("button", { class: "btn ghost", type: "button", onclick: () => overlay.remove() }, "キャンセル"), save)));
+    document.body.append(overlay);
+  }
   renderComments();
   return el("article", { class: "post" },
     el("div", { class: "phead" }, avatarEl(profs[p.user_id] || { display_name: who }), el("span", { class: "who" }, who)),
-    el("div", { class: "polaroid" },
+    el("div", { class: "polaroid f-" + (FRAMES[p.frame] ? p.frame : "cream") },
       el("div", { class: "media" }, media),
-      el("div", { class: "cap" }, fmt(p.taken_at), p.media_type === "video" ? el("span", { class: "vbadge" }, "🎬") : null)),
+      el("div", { class: "cap" },
+        p.caption ? el("span", { class: "ct" }, p.caption) : null,
+        p.caption ? el("span", { class: "dt" }, fmt(p.taken_at), p.media_type === "video" ? el("span", { class: "vbadge" }, "🎬") : null)
+                  : [fmt(p.taken_at), p.media_type === "video" ? el("span", { class: "vbadge" }, "🎬") : null])),
+    rxbar,
     el("div", { class: "pact" },
       el("span", {}, "💬 ", countEl),
       el("span", { class: "sp" }),
+      (mine && !archived) ? el("button", { onclick: editPost }, "✏ 編集") : null,
       el("button", { onclick: () => savePost(p, url, who) }, "⬇ 保存"),
       canDelete ? el("button", { onclick: del }, "🗑 削除") : null,
       !mine ? el("button", { onclick: () => openReport(p) }, "🚩 通報") : null),
@@ -1496,22 +1603,89 @@ function openReport(p) {
   document.body.append(overlay);
 }
 
+// ====== 枠・リアクション・zip ======
+const FRAMES = {
+  cream: { bg: "#fffdf8", ink: "#4a4038", sub: "#8a7e72", name: "クリーム" },
+  white: { bg: "#ffffff", ink: "#4a4038", sub: "#8a7e72", name: "白" },
+  pink: { bg: "#ffe3ea", ink: "#5a3a44", sub: "#9a7080", name: "ピンク" },
+  mint: { bg: "#def5e6", ink: "#33503d", sub: "#6f927b", name: "ミント" },
+  sky: { bg: "#ddecff", ink: "#34475f", sub: "#6f86a3", name: "そら" },
+  black: { bg: "#2b2724", ink: "#f3ece4", sub: "#b8aca0", name: "ブラック" }
+};
+const REACTS = ["❤️", "😂", "😮", "😢", "👏", "🔥"];
+function framePicker(initial, onChange) {
+  let cur = FRAMES[initial] ? initial : "cream";
+  const btns = Object.keys(FRAMES).map(k => {
+    const b = el("button", { type: "button", title: FRAMES[k].name, style: `background:${FRAMES[k].bg}`, onclick: () => { cur = k; sync(); onChange && onChange(k); } });
+    b.dataset.k = k;
+    return b;
+  });
+  function sync() { btns.forEach(b => b.classList.toggle("sel", b.dataset.k === cur)); }
+  sync();
+  const node = el("div", { class: "fpick" }, ...btns);
+  node.get = () => cur;
+  return node;
+}
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let off = 0;
+  const d = new Date();
+  const dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(10, tm, true); lh.setUint16(12, dt, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
+    parts.push(lh.buffer, nm, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(12, tm, true); ch.setUint16(14, dt, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, off, true);
+    central.push(ch.buffer, nm);
+    off += 30 + nm.length + sz;
+  }
+  const csz = central.reduce((a, b) => a + b.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, csz, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
+}
+
 // ====== 保存 ======
-async function polaroidBlob(imgBlob, takenAt, who) {
+async function polaroidBlob(imgBlob, takenAt, who, caption, frame) {
   const bmp = await createImageBitmap(imgBlob);
-  const W = 1200, P = 60, S = W - P * 2, H = P + S + 240;
+  const F = FRAMES[frame] || FRAMES.cream;
+  const W = 1200, P = 60, S = W - P * 2, H = P + S + 260;
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const g = c.getContext("2d");
-  g.fillStyle = "#fffdf8"; g.fillRect(0, 0, W, H);
+  g.fillStyle = F.bg; g.fillRect(0, 0, W, H);
   g.drawImage(bmp, P, P, S, S);
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillStyle = "#4a4038";
-  g.font = '56px "Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif';
-  g.fillText(fmt(takenAt), W / 2, P + S + 95);
-  g.fillStyle = "#8a7e72";
-  g.font = "36px sans-serif";
-  g.fillText(who, W / 2, P + S + 170);
+  const FONT = '"Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif';
+  let y = P + S + 95;
+  if (caption) {
+    let size = 64;
+    g.font = `${size}px ${FONT}`;
+    while (size > 24 && g.measureText(caption).width > S) { size -= 4; g.font = `${size}px ${FONT}`; }
+    g.fillStyle = F.ink;
+    g.fillText(caption, W / 2, y);
+    g.font = `38px ${FONT}`; g.fillStyle = F.sub;
+    g.fillText(fmt(takenAt), W / 2, y + 72);
+    g.font = "34px sans-serif";
+    g.fillText(who, W / 2, y + 132);
+  } else {
+    g.fillStyle = F.ink;
+    g.font = `56px ${FONT}`;
+    g.fillText(fmt(takenAt), W / 2, y);
+    g.fillStyle = F.sub;
+    g.font = "36px sans-serif";
+    g.fillText(who, W / 2, y + 75);
+  }
   return await new Promise(r => c.toBlob(r, "image/png"));
 }
 function downloadBlob(blob, name) {
@@ -1556,7 +1730,7 @@ async function savePost(p, url, who) {
     const res = await fetch(url);
     const blob = await res.blob();
     if (p.media_type === "photo") {
-      await deliver(await polaroidBlob(blob, p.taken_at, who), `pasha_${stamp(p.taken_at)}.png`);
+      await deliver(await polaroidBlob(blob, p.taken_at, who, p.caption, p.frame), `pasha_${stamp(p.taken_at)}.png`);
     } else {
       const ext = (p.media_path.split(".").pop() || "mp4").toLowerCase();
       const typed = blob.type ? blob : new Blob([blob], { type: ext === "webm" ? "video/webm" : "video/mp4" });
@@ -1586,6 +1760,8 @@ function openCamera(gid, onPosted) {
   const shutter = el("button", { class: "shutter", onclick: onShutter }, el("i"));
   const btnPhoto = el("button", { class: "on", onclick: () => setMode("photo") }, "写真");
   const btnVideo = el("button", { onclick: () => setMode("video") }, "動画");
+  const capInp = el("input", { type: "text", maxlength: 40, placeholder: "ひとこと（なくてもOK）" });
+  const fpick = framePicker("cream");
   const flip = el("button", { onclick: () => { facing = facing === "user" ? "environment" : "user"; startStream(); } }, "🔄 切替");
 
   const overlay = el("div", { class: "cam" });
@@ -1593,6 +1769,7 @@ function openCamera(gid, onPosted) {
     el("div", { class: "bar" }, el("button", { onclick: close }, "✕ 閉じる"), flip),
     el("div", { class: "view" }, video, timerLabel, busyLabel),
     el("div", { class: "modes" }, btnPhoto, btnVideo),
+    el("div", { class: "opts" }, capInp, fpick),
     el("div", { class: "shutter-row" }, shutter)
   );
   document.body.append(overlay);
@@ -1649,7 +1826,11 @@ function openCamera(gid, onPosted) {
       const path = `${gid}/${crypto.randomUUID()}.${ext}`;
       const { error: ue } = await sb.storage.from("media").upload(path, blob, { contentType: blob.type, cacheControl: "3600" });
       if (ue) throw ue;
-      const { error: pe } = await sb.from("posts").insert({ group_id: gid, media_path: path, media_type: type, taken_at: takenAt.toISOString() });
+      const row = { group_id: gid, media_path: path, media_type: type, taken_at: takenAt.toISOString() };
+      const cp = capInp.value.trim().slice(0, 40);
+      if (cp) row.caption = cp;
+      if (fpick.get() !== "cream") row.frame = fpick.get();
+      const { error: pe } = await sb.from("posts").insert(row);
       if (pe) { await sb.storage.from("media").remove([path]); throw pe; }
       toast("投稿しました ✨");
       onPosted();
