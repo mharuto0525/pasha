@@ -335,12 +335,13 @@ async function pushSettingsCard() {
       return;
     }
     const sub = await currentSub().catch(() => null);
-    on = !!sub && Notification.permission === "granted";
+    const perm = await notifPerm();
+    on = !!sub && perm === "granted";
     toggle.style.display = "";
     test.style.display = on ? "" : "none";
     toggle.textContent = on ? "通知をオフにする" : "通知をオンにする";
     toggle.className = "btn big" + (on ? " ghost" : "");
-    status.textContent = Notification.permission === "denied"
+    status.textContent = perm === "denied"
       ? "通知がブロックされています。端末の設定でこのアプリの通知を許可してください。"
       : on ? "オン：投稿・コメント・フレンド申請などをお知らせします。"
            : "オフ：アプリを閉じているときに通知が届きません。";
@@ -379,6 +380,9 @@ const APP_NAME = "ぱしゃっと";
 
 // ====== ユーティリティ ======
 const $ = (s, r = document) => r.querySelector(s);
+// ネイティブアプリ（Capacitor）の中で動いているか
+const NATIVE = !!(window.Capacitor && typeof Capacitor.isNativePlatform === "function" && Capacitor.isNativePlatform());
+const NP = name => { try { return (Capacitor.Plugins && Capacitor.Plugins[name]) || Capacitor.registerPlugin(name); } catch (_) { return null; } };
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
@@ -748,13 +752,40 @@ function urlB64ToUint8(b64) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 function pushSupported() {
+  if (NATIVE) return !!NP("PushNotifications");
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 // サービスワーカーが使えない環境でも画面が固まらないよう、待つのは4秒まで
 function swReady() {
   return Promise.race([navigator.serviceWorker.ready, new Promise((_, rej) => setTimeout(() => rej(new Error("sw-timeout")), 4000))]);
 }
+async function notifPerm() {
+  if (NATIVE) {
+    try { const r = await NP("PushNotifications").checkPermissions(); return r.receive === "granted" ? "granted" : r.receive === "denied" ? "denied" : "default"; }
+    catch (_) { return "default"; }
+  }
+  return Notification.permission;
+}
+function nativeToken() {
+  const PN = NP("PushNotifications");
+  return new Promise(async (resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("token-timeout")), 15000);
+    try {
+      const h = await PN.addListener("registration", t => { clearTimeout(timer); try { h.remove(); } catch (_) {} resolve(t.value); });
+      const e = await PN.addListener("registrationError", err => { clearTimeout(timer); try { e.remove(); } catch (_) {} reject(new Error((err && err.error) || "registration")); });
+      try { await PN.createChannel({ id: "default", name: "ぱしゃっと", description: "投稿・コメント・フレンド申請などのお知らせ", importance: 4, visibility: 1 }); } catch (_) {}
+      await PN.register();
+    } catch (err) { clearTimeout(timer); reject(err); }
+  });
+}
+async function saveNativeToken() {
+  const token = await nativeToken();
+  const { error } = await sb.rpc("save_push_subscription", { p_endpoint: "fcm:" + token, p_p256dh: "fcm", p_auth: "fcm" });
+  if (error) throw error;
+  try { localStorage.setItem("pasha-fcm", token); } catch (_) {}
+}
 async function currentSub() {
+  if (NATIVE) { let t = null; try { t = localStorage.getItem("pasha-fcm"); } catch (_) {} return t ? { endpoint: "fcm:" + t } : null; }
   if (!pushSupported()) return null;
   try { const reg = await swReady(); return await reg.pushManager.getSubscription(); }
   catch (_) { return null; }
@@ -765,6 +796,12 @@ async function saveSub(sub) {
   if (error) throw error;
 }
 async function enablePush() {
+  if (NATIVE) {
+    const r = await NP("PushNotifications").requestPermissions();
+    if (r.receive !== "granted") throw new Error("denied");
+    await saveNativeToken();
+    return;
+  }
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error("denied");
   const reg = await swReady();
@@ -773,6 +810,12 @@ async function enablePush() {
   await saveSub(sub);
 }
 async function disablePush() {
+  if (NATIVE) {
+    let t = null; try { t = localStorage.getItem("pasha-fcm"); localStorage.removeItem("pasha-fcm"); } catch (_) {}
+    if (t) await sb.rpc("delete_push_subscription", { p_endpoint: "fcm:" + t }).catch(() => {});
+    try { await NP("PushNotifications").unregister(); } catch (_) {}
+    return;
+  }
   const sub = await currentSub();
   if (sub) {
     await sb.rpc("delete_push_subscription", { p_endpoint: sub.endpoint }).catch(() => {});
@@ -782,7 +825,8 @@ async function disablePush() {
 // すでにオンの人は、起動のたびに宛先を最新にしておく
 async function syncPush() {
   try {
-    if (!pushSupported() || Notification.permission !== "granted") return;
+    if (!pushSupported() || (await notifPerm()) !== "granted") return;
+    if (NATIVE) { await saveNativeToken(); return; }
     const reg = await swReady();
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
@@ -811,11 +855,16 @@ const unb64 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
 async function pinHash(pin, salt) {
   return toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin)));
 }
+async function nativeBioVerify() {
+  await NP("NativeBiometric").verifyIdentity({ reason: "ぱしゃっとのロックを解除", title: "ぱしゃっと", subtitle: "指紋または顔認証", useFallback: false });
+}
 async function bioAvailable() {
+  if (NATIVE) { try { const r = await NP("NativeBiometric").isAvailable(); return !!(r && r.isAvailable); } catch (_) { return false; } }
   try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }
   catch (_) { return false; }
 }
 async function bioRegister() {
+  if (NATIVE) { await nativeBioVerify(); return "native"; }
   const cred = await navigator.credentials.create({ publicKey: {
     challenge: rnd(32), rp: { name: "ぱしゃっと" },
     user: { id: rnd(16), name: (profile && profile.login_id) || "user", displayName: (profile && profile.display_name) || "user" },
@@ -824,6 +873,7 @@ async function bioRegister() {
   return b64(cred.rawId);
 }
 async function bioCheck(id) {
+  if (NATIVE) { await nativeBioVerify(); return true; }
   await navigator.credentials.get({ publicKey: {
     challenge: rnd(32), allowCredentials: [{ type: "public-key", id: unb64(id) }], userVerification: "required", timeout: 60000 } });
   return true;
@@ -1909,7 +1959,17 @@ function askTapToSave(file) {
     document.body.append(overlay);
   });
 }
+async function nativeShare(blob, filename) {
+  const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+  const w = await NP("Filesystem").writeFile({ path: filename, data, directory: "CACHE" });
+  await NP("Share").share({ title: filename, files: [w.uri], dialogTitle: "保存・共有" });
+}
 async function deliver(blob, filename) {
+  if (NATIVE) {
+    try { await nativeShare(blob, filename); }
+    catch (e) { if (!/cancel/i.test(String((e && e.message) || e))) { console.error(e); toast("保存できませんでした"); } }
+    return;
+  }
   const file = new File([blob], filename, { type: blob.type });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); return; }
@@ -2096,10 +2156,20 @@ function openCamera(gid, onPosted) {
 }
 
 // ====== 起動 ======
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && !NATIVE) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").then(() => { if (configured) loadSession().then(ok => { if (ok && profile && !profile.is_admin) syncPush(); }).catch(() => {}); }).catch(() => {});
   });
+}
+if (NATIVE) {
+  try {
+    const PN = NP("PushNotifications");
+    PN.addListener("pushNotificationActionPerformed", ev => {
+      const u = ev && ev.notification && ev.notification.data && ev.notification.data.url;
+      if (u) { if (location.hash === u) route(); else location.hash = u; }
+    });
+    PN.addListener("pushNotificationReceived", n => { toast(n.body || n.title || "通知が届きました"); if (refreshHook) refreshHook(); });
+  } catch (_) {}
 }
 maybeLock();
 route();
