@@ -14,34 +14,115 @@
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>ぱしゃっと</title>
+<script>
+(function () {
+  var PAL = {
+    cream:{n:"クリーム",l:{bg:"#fff6ee",card:"#fffdf8",ink:"#3b322c",sub:"#8a7e72",line:"#eadfd3",inp:"#ffffff",tip:"var(--tip)",ban:"#efe7dc"},d:{bg:"#1f1713",card:"#2b201a",ink:"#f3e8df",sub:"#b3a296",line:"#40322a",inp:"#352820",tip:"#3d3022",ban:"#3a2d25"}},
+    milk:{n:"ミルク",l:{bg:"#f2f2f7",card:"#ffffff",ink:"#1c1c1e",sub:"#8e8e93",line:"#e0e0e6",inp:"#ffffff",tip:"#fff3d6",ban:"#e6e6ec"},d:{bg:"#000000",card:"#1c1c1e",ink:"#f2f2f7",sub:"#98989f",line:"#2c2c2e",inp:"#2c2c2e",tip:"#3a3322",ban:"#2c2c2e"}},
+    sakura:{n:"さくら",l:{bg:"#fff0f4",card:"#fffafb",ink:"#4a2f38",sub:"#9a7a85",line:"#f3d8e0",inp:"#ffffff",tip:"#ffe9d6",ban:"#f8e1e8"},d:{bg:"#24151b",card:"#321e26",ink:"#f6e4ea",sub:"#b99aa5",line:"#4a2c37",inp:"#3d2530",tip:"#47302a",ban:"#41262f"}},
+    mint:{n:"ミント",l:{bg:"#eefaf2",card:"#fbfffc",ink:"#27402f",sub:"#6f8f7a",line:"#d3ebdc",inp:"#ffffff",tip:"#fff3d6",ban:"#dff1e6"},d:{bg:"#0f1b15",card:"#18281f",ink:"#e2f3e8",sub:"#92b09c",line:"#27412f",inp:"#1f3327",tip:"#3a3524",ban:"#223629"}},
+    sky:{n:"そら",l:{bg:"#eef5ff",card:"#fbfdff",ink:"#26364d",sub:"#7088a8",line:"#d4e2f5",inp:"#ffffff",tip:"#fff3d6",ban:"#dfeaf8"},d:{bg:"#0e1522",card:"#172236",ink:"#e4edfa",sub:"#8fa3c0",line:"#253652",inp:"#1d2b43",tip:"#3a3524",ban:"#203049"}}
+  };
+  var SYS = '-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif';
+  var FONTS = {
+    sys:{n:"標準",f:SYS},
+    maru:{n:"まる",f:'"Zen Maru Gothic","Hiragino Maru Gothic ProN",' + SYS,g:"Zen+Maru+Gothic:wght@400;700"},
+    hand:{n:"手書き",f:'"Yomogi","Hiragino Maru Gothic ProN",' + SYS,g:"Yomogi"},
+    klee:{n:"教科書",f:'"Klee One","Hiragino Mincho ProN",serif',g:"Klee+One:wght@400;600"},
+    pop:{n:"ポップ",f:'"Mochiy Pop One","Hiragino Maru Gothic ProN",' + SYS,g:"Mochiy+Pop+One"},
+    mincho:{n:"明朝",f:'"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif',g:"Shippori+Mincho:wght@400;700"}
+  };
+  var ACCENTS = ["#ff6b81","#ff8a3d","#f2b01e","#34c759","#00a99d","#4db6e8","#5b7cff","#9b6bff","#e060c0","#6b5e55"];
+  var DEF = {mode:"auto",pal:"cream",accent:"#ff6b81",font:"sys",anim:true};
+  var KEY = "pasha-theme";
+  function load() {
+    var t = {}; try { t = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) {}
+    var o = {}; for (var k in DEF) o[k] = (t[k] !== undefined && t[k] !== null) ? t[k] : DEF[k];
+    if (!PAL[o.pal]) o.pal = DEF.pal; if (!FONTS[o.font]) o.font = DEF.font;
+    if (!/^#[0-9a-f]{6}$/i.test(o.accent)) o.accent = DEF.accent;
+    return o;
+  }
+  var cur = load();
+  function rgb(h) { return [1,3,5].map(function (i) { return parseInt(h.substr(i,2),16); }); }
+  function hex(a) { return "#" + a.map(function (v) { return ("0" + Math.round(v).toString(16)).slice(-2); }).join(""); }
+  function mix(a, b, t) { var x = rgb(a), y = rgb(b); return hex([0,1,2].map(function (i) { return x[i]*t + y[i]*(1-t); })); }
+  function lum(h) { var c = rgb(h).map(function (v) { v /= 255; return v <= .03928 ? v/12.92 : Math.pow((v+.055)/1.055, 2.4); }); return .2126*c[0] + .7152*c[1] + .0722*c[2]; }
+  var mq = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
+  function isDark() { return cur.mode === "dark" || (cur.mode === "auto" && !!(mq && mq.matches)); }
+  function apply() {
+    var d = isDark(), P = PAL[cur.pal][d ? "d" : "l"], st = document.documentElement.style;
+    st.setProperty("--bg", P.bg); st.setProperty("--card", P.card); st.setProperty("--ink", P.ink);
+    st.setProperty("--sub", P.sub); st.setProperty("--line", P.line); st.setProperty("--inp", P.inp);
+    st.setProperty("--tip", P.tip); st.setProperty("--ban", P.ban);
+    var r = rgb(P.bg); st.setProperty("--topbg", "rgba(" + r.join(",") + ",.88)");
+    st.setProperty("--accent", cur.accent);
+    st.setProperty("--tint", mix(cur.accent, P.card, d ? .22 : .12));
+    st.setProperty("--on-accent", lum(cur.accent) > .45 ? "#3b322c" : "#ffffff");
+    var a = rgb(cur.accent); st.setProperty("--acc-shadow", "rgba(" + a.join(",") + (d ? ",.35)" : ",.5)"));
+    st.setProperty("--font", FONTS[cur.font].f);
+    st.setProperty("--capfont", cur.font === "sys" ? '"Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif' : FONTS[cur.font].f);
+    document.documentElement.dataset.anim = cur.anim === false ? "off" : "on";
+    document.documentElement.style.colorScheme = d ? "dark" : "light";
+    var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", P.bg);
+    var g = FONTS[cur.font].g;
+    if (g) {
+      var l = document.getElementById("pasha-font");
+      var href = "https://fonts.googleapis.com/css2?family=" + g + "&display=swap";
+      if (!l) { l = document.createElement("link"); l.id = "pasha-font"; l.rel = "stylesheet"; document.head.appendChild(l); }
+      if (l.getAttribute("href") !== href) l.setAttribute("href", href);
+    }
+  }
+  if (mq) { var h = function () { if (cur.mode === "auto") apply(); }; if (mq.addEventListener) mq.addEventListener("change", h); else if (mq.addListener) mq.addListener(h); }
+  window.PashaTheme = {
+    PAL: PAL, FONTS: FONTS, ACCENTS: ACCENTS, DEF: DEF,
+    get: function () { var o = {}; for (var k in cur) o[k] = cur[k]; return o; },
+    isDark: isDark,
+    set: function (p) { for (var k in p) cur[k] = p[k]; try { localStorage.setItem(KEY, JSON.stringify(cur)); } catch (e) {} apply(); },
+    reset: function () { cur = JSON.parse(JSON.stringify(DEF)); try { localStorage.removeItem(KEY); } catch (e) {} apply(); },
+    apply: apply
+  };
+  apply();
+  var orig = Element.prototype.remove;
+  Element.prototype.remove = function () {
+    if (this.classList && this.classList.contains("overlay") && !this.__closing && this.isConnected &&
+        document.documentElement.dataset.anim !== "off" && !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      this.__closing = true; this.classList.add("closing");
+      var self = this; setTimeout(function () { orig.call(self); }, 230); return;
+    }
+    orig.call(this);
+  };
+})();
+</script>
 <style>
 :root{
   --bg:#fff6ee; --card:#fffdf8; --ink:#3b322c; --sub:#8a7e72; --accent:#ff6b81; --line:#eadfd3;
+  --inp:#ffffff; --tip:var(--tip); --ban:#efe7dc; --tint:var(--tint); --on-accent:#fff; --topbg:rgba(255,246,238,.88); --acc-shadow:rgba(255,107,129,.5);
+  --font:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; --capfont:"Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font)}
 body{min-height:100dvh}
 button,input{font:inherit;color:inherit}
 a{color:inherit}
-.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:rgba(255,246,238,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:var(--topbg);backdrop-filter:saturate(1.8) blur(14px);-webkit-backdrop-filter:saturate(1.8) blur(14px);border-bottom:1px solid var(--line)}
 .top h1{flex:1;margin:0;font-size:18px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top .icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:28px;text-decoration:none;background:none;border:0;cursor:pointer}
 .top .acts{display:flex;min-width:40px;justify-content:flex-end}
 .top .icon{position:relative}
 .badge{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#d64545;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
 .sect{margin:18px 0 4px;font-size:14px;font-weight:700}
-.btn.ghost.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .nitem{cursor:pointer}
-.nitem.unread{border-color:var(--accent);background:#fff0f3}
+.nitem.unread{border-color:var(--accent);background:var(--tint)}
 .nitem .who2{white-space:normal;line-height:1.6}
 .tag{font-size:11px;color:var(--sub)}
 .addrow{display:flex;gap:8px;align-items:flex-end}
 .addrow input{margin-top:0}
 .addrow .btn{flex-shrink:0;height:46px}
 .wrap{max-width:520px;margin:0 auto;padding:14px 14px calc(120px + env(safe-area-inset-bottom))}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;text-decoration:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent);color:var(--on-accent);font-weight:700;cursor:pointer;text-decoration:none}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
-.btn.danger{background:#d64545}
+.btn.danger{background:#d64545;color:#fff}
 .btn.sm{padding:6px 12px;font-size:13px}
 .btn.big{width:100%;padding:14px;font-size:16px;margin-top:12px}
 .btn:disabled{opacity:.5}
@@ -52,24 +133,24 @@ a{color:inherit}
 .empty{text-align:center;color:var(--sub);padding:36px 12px;line-height:1.8}
 .note{color:var(--sub);font-size:12px;line-height:1.7;margin-top:14px}
 .sub{color:var(--sub);font-size:13px}
-.tip{display:flex;gap:8px;align-items:flex-start;background:#fff0d9;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:12px}
+.tip{display:flex;gap:8px;align-items:flex-start;background:var(--tip);border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:12px}
 .tip button{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;color:var(--sub)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
 .card + .card{margin-top:14px}
 .card h2{margin:4px 0 12px}
 label{display:block;font-size:13px;color:var(--sub);margin:10px 0 0}
-input[type=text],input[type=password],input[type=email]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+input[type=text],input[type=password],input[type=email]{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--inp);font-size:16px}
 .tabs{display:flex;gap:8px;margin-bottom:4px}
 .tabs button{flex:1;padding:10px;border-radius:999px;border:1px solid var(--line);background:transparent;font-weight:700;cursor:pointer}
-.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .rows{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 .rowi{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
 .rowi .who2{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .rowi small{color:var(--sub)}
 .rowi .ops{display:flex;gap:6px;flex-shrink:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.chip{background:#fff0d9;border-radius:999px;padding:4px 10px;font-size:13px}
-.banner{background:#efe7dc;border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:14px;text-align:center;line-height:1.6}
+.chip{background:var(--tip);border-radius:999px;padding:4px 10px;font-size:13px}
+.banner{background:var(--ban);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:14px;text-align:center;line-height:1.6}
 details.arch{margin-top:20px}
 details.arch summary{cursor:pointer;color:var(--sub);font-size:14px;padding:6px 2px}
 details.arch .glist{margin-top:8px}
@@ -88,25 +169,25 @@ details.arch .glist{margin-top:8px}
 .dots i.on{background:var(--ink)}
 .pad{display:grid;grid-template-columns:repeat(3,72px);gap:14px}
 .pad button{height:72px;border-radius:50%;border:1px solid var(--line);background:var(--card);font-size:26px;cursor:pointer;padding:0}
-.pad button:active{background:#fff0f3}
+.pad button:active{background:var(--tint)}
 .pad button.ghost{border-color:transparent;background:transparent;font-size:24px}
-select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;width:100%;margin-top:6px}
+select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--inp);color:var(--ink);width:100%;margin-top:6px}
 .avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
 .avatar.lg{width:56px;height:56px;font-size:28px}
 .avatar.sm{width:26px;height:26px;font-size:13px}
 .who2.wa{display:flex;align-items:center;gap:8px}
 .apick{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px}
-.apick button{aspect-ratio:1/1;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:22px;cursor:pointer;padding:0}
-.apick button.sel{border-color:var(--accent);background:#fff0f3}
-.apick.colors button{border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.apick button{aspect-ratio:1/1;border-radius:12px;border:2px solid var(--line);background:var(--inp);font-size:22px;cursor:pointer;padding:0}
+.apick button.sel{border-color:var(--accent);background:var(--tint)}
+.apick.colors button{border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1px var(--line)}
 .apick.colors button.sel{box-shadow:0 0 0 3px var(--ink)}
 .phead .who{font-weight:700;font-size:14px}
-.polaroid{background:var(--card);padding:14px 14px 0;border-radius:4px;box-shadow:0 6px 18px rgba(90,60,30,.18),0 1px 3px rgba(90,60,30,.15)}
+.polaroid{background:#fffdf8;padding:14px 14px 0;border-radius:4px;box-shadow:0 6px 18px rgba(90,60,30,.18),0 1px 3px rgba(90,60,30,.15)}
 .post:nth-child(odd) .polaroid{transform:rotate(-.7deg)}
 .post:nth-child(even) .polaroid{transform:rotate(.7deg)}
-.media{aspect-ratio:1/1;background:#2a2420;overflow:hidden}
+.media{position:relative;touch-action:manipulation;aspect-ratio:1/1;background:#2a2420;overflow:hidden}
 .media img,.media video{width:100%;height:100%;object-fit:cover;display:block}
-.cap{padding:16px 0 20px;text-align:center;font-family:"Segoe Script","Bradley Hand","Hiragino Maru Gothic ProN",cursive,sans-serif;font-size:19px;color:#4a4038;letter-spacing:.5px}
+.cap{padding:16px 0 20px;text-align:center;font-family:var(--capfont);font-size:19px;color:#4a4038;letter-spacing:.5px}
 .polaroid.f-white{background:#fff}
 .polaroid.f-pink{background:#ffe3ea}
 .polaroid.f-mint{background:#def5e6}
@@ -116,8 +197,8 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 .cap .ct{display:block;font-size:20px;word-break:break-word;padding:0 4px}
 .cap .dt{display:block;font-size:14px;opacity:.7;margin-top:4px}
 .rxbar{display:flex;gap:4px;padding:8px 0 0;flex-wrap:wrap}
-.rxbar button{background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:3px 9px;font-size:15px;cursor:pointer;color:var(--ink)}
-.rxbar button.on{border-color:var(--accent);background:#fff0f3}
+.rxbar button{background:var(--inp);border:1.5px solid var(--line);border-radius:999px;padding:3px 9px;font-size:15px;cursor:pointer;color:var(--ink)}
+.rxbar button.on{border-color:var(--accent);background:var(--tint)}
 .rxbar button small{font-size:12px;margin-left:3px}
 .rxbar button:disabled{opacity:1;cursor:default}
 .fpick{display:flex;gap:10px;margin:8px 0;justify-content:center;flex-wrap:wrap}
@@ -139,7 +220,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 .cform .send{background:none;border:0;color:var(--accent);font-weight:700;cursor:pointer}
 
 /* fab */
-.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));z-index:20;width:72px;height:72px;border-radius:50%;border:4px solid #fff;background:var(--accent);color:#fff;font-size:30px;box-shadow:0 6px 18px rgba(255,107,129,.5);cursor:pointer}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));z-index:20;width:72px;height:72px;border-radius:50%;border:4px solid var(--card);background:var(--accent);color:var(--on-accent);font-size:30px;box-shadow:0 6px 18px var(--acc-shadow);cursor:pointer}
 
 /* modal & toast */
 .overlay{position:fixed;inset:0;z-index:100;background:rgba(40,28,20,.5);display:flex;align-items:center;justify-content:center;padding:20px}
@@ -171,6 +252,64 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 .boot-name{font-weight:700;font-size:20px}
 .boot-sub{color:var(--sub);font-size:13px}
 @keyframes bootp{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+
+/* theme card */
+.tseg{display:flex;gap:6px;margin-top:6px}
+.tseg button{flex:1;padding:8px 4px;border-radius:999px;border:1px solid var(--line);background:transparent;cursor:pointer;font-weight:700;font-size:13px}
+.tseg button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.tpal{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}
+.tpal button{border:3px solid transparent;border-radius:14px;padding:8px 2px 6px;background:var(--bg);box-shadow:0 0 0 1px var(--line);cursor:pointer;font-size:11px;color:var(--ink)}
+.tpal button i{display:block;width:26px;height:26px;border-radius:50%;margin:0 auto 4px;background:var(--cardc);box-shadow:inset 0 0 0 1px rgba(128,128,128,.3)}
+.tpal button.on{border-color:var(--accent)}
+.tacc{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;align-items:center}
+.tacc button,.tacc input{width:34px;height:34px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1px var(--line);padding:0;cursor:pointer}
+.tacc button.on{box-shadow:0 0 0 3px var(--ink)}
+.tacc input[type=color]{background:none;overflow:hidden}
+.tfont{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.tfont button{display:flex;justify-content:space-between;align-items:center;text-align:left;padding:10px 14px;border-radius:12px;border:2px solid var(--line);background:var(--inp);cursor:pointer;font-size:16px}
+.tfont button small{font-size:11px;color:var(--sub);font-family:var(--font)}
+.tfont button.on{border-color:var(--accent);background:var(--tint)}
+
+/* iPhone風アニメーション */
+:root{--ease:cubic-bezier(.32,.72,0,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+html{scroll-behavior:smooth}
+body{transition:background-color .4s var(--ease),color .4s var(--ease)}
+.btn,.gcard,.tabs button,.rxbar button,.nitem,.rowi,.pact button,.top .icon,.tseg button,.tpal button,.tfont button,.tacc button,.pad button{transition:transform .4s var(--spring),background-color .25s,border-color .25s,opacity .25s,box-shadow .25s}
+.btn:active,.gcard:active,.tabs button:active,.rxbar button:active,.nitem:active,.tseg button:active,.tpal button:active,.tfont button:active,.tacc button:active,.pad button:active{transform:scale(.95);transition-duration:.1s}
+.pact button:active,.top .icon:active{transform:scale(.86);transition-duration:.1s}
+.fab{transition:transform .4s var(--spring),box-shadow .25s;animation:fabIn .7s var(--spring) .2s backwards}
+.fab:active{transform:translateX(-50%) scale(.88);transition-duration:.1s}
+@keyframes fabIn{from{transform:translateX(-50%) scale(.2);opacity:0}to{transform:translateX(-50%) scale(1);opacity:1}}
+.pg-in{animation:pgIn .55s var(--ease) backwards}
+.pg-back{animation:pgBack .55s var(--ease) backwards}
+.pg-fade{animation:pgFade .45s ease backwards}
+@keyframes pgIn{from{opacity:0;transform:translateX(32px)}to{opacity:1;transform:none}}
+@keyframes pgBack{from{opacity:0;transform:translateX(-32px)}to{opacity:1;transform:none}}
+@keyframes pgFade{from{opacity:0}to{opacity:1}}
+.overlay{animation:ovIn .3s ease backwards;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.modal{animation:sheetIn .55s var(--ease) backwards}
+.overlay.closing{animation:ovOut .23s ease forwards;pointer-events:none}
+.overlay.closing .modal{animation:sheetOut .23s ease forwards}
+@keyframes ovIn{from{opacity:0}to{opacity:1}}
+@keyframes ovOut{from{opacity:1}to{opacity:0}}
+@keyframes sheetIn{from{opacity:0;transform:translateY(40px) scale(.93)}to{opacity:1;transform:none}}
+@keyframes sheetOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(24px) scale(.96)}}
+.lock{animation:ovIn .3s ease backwards}
+.toast{animation:toastIn .45s var(--spring) backwards,toastOut .3s ease 2.25s forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(18px) scale(.9)}to{opacity:1;transform:translateX(-50%)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(-50%) translateY(10px)}}
+.feed>.post,.glist>*,.rows>*{animation:itemIn .6s var(--ease) backwards}
+.feed>.post:nth-child(2),.glist>*:nth-child(2),.rows>*:nth-child(2){animation-delay:.06s}
+.feed>.post:nth-child(3),.glist>*:nth-child(3),.rows>*:nth-child(3){animation-delay:.12s}
+.feed>.post:nth-child(4),.glist>*:nth-child(4),.rows>*:nth-child(4){animation-delay:.18s}
+.feed>.post:nth-child(n+5),.glist>*:nth-child(n+5),.rows>*:nth-child(n+5){animation-delay:.24s}
+@keyframes itemIn{from{opacity:0;transform:translateY(26px) scale(.97)}to{opacity:1;transform:none}}
+.pop{animation:pop .5s var(--spring)}
+@keyframes pop{0%{transform:scale(1)}35%{transform:scale(1.5)}100%{transform:scale(1)}}
+.bigheart{position:absolute;left:50%;top:50%;font-size:96px;line-height:1;pointer-events:none;animation:bigHeart .9s var(--ease) forwards;filter:drop-shadow(0 4px 12px rgba(0,0,0,.3))}
+@keyframes bigHeart{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.25)}50%{opacity:1;transform:translate(-50%,-55%) scale(1)}100%{opacity:0;transform:translate(-50%,-110%) scale(1)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+[data-anim=off] *,[data-anim=off] *::before,[data-anim=off] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 </style>
 </head>
 <body>
@@ -404,6 +543,7 @@ function authMessage(err) {
 }
 
 // ====== ルーター ======
+let lastHash = null, lastDepth = 0;
 async function route() {
   const my = ++routeSeq;
   refreshHook = null;
@@ -445,6 +585,13 @@ async function route() {
     }
   }
   if (my !== routeSeq) return;
+  {
+    const h = location.hash || "#/";
+    const depth = h === "#/" || h === "#" ? 0 : 1;
+    if (lastHash === null) root.classList.add("pg-fade");
+    else if (h !== lastHash) root.classList.add(depth < lastDepth ? "pg-back" : "pg-in");
+    lastHash = h; lastDepth = depth;
+  }
   $("#app").replaceChildren(root);
   refreshHook = refresh || null;
   window.scrollTo(0, 0);
@@ -832,6 +979,45 @@ async function logout() {
   await sb.auth.signOut();
 }
 
+// ====== テーマ設定 ======
+function themeSettingsCard() {
+  const T = window.PashaTheme;
+  const box = el("div", { class: "card" });
+  function render() {
+    const cur = T.get(), dark = T.isDark();
+    const seg = (items, val, on) => el("div", { class: "tseg" }, ...items.map(([k, n]) =>
+      el("button", { type: "button", class: val === k ? "on" : "", onclick: () => on(k) }, n)));
+    const colorIn = el("input", { type: "color", value: cur.accent, title: "好きな色" });
+    colorIn.addEventListener("input", () => T.set({ accent: colorIn.value }));
+    colorIn.addEventListener("change", render);
+    box.replaceChildren(
+      el("h2", {}, "🎨 テーマ・デザイン"),
+      el("div", { class: "sub" }, "この端末だけに保存されます。変えるとすぐ反映されます。"),
+      el("label", {}, "モード"),
+      seg([["auto", "自動"], ["light", "ライト"], ["dark", "ダーク"]], cur.mode, k => { T.set({ mode: k }); render(); }),
+      el("label", {}, "背景の雰囲気"),
+      el("div", { class: "tpal" }, ...Object.keys(T.PAL).map(k => {
+        const P = T.PAL[k][dark ? "d" : "l"];
+        const b = el("button", { type: "button", class: cur.pal === k ? "on" : "", style: `background:${P.bg};color:${P.ink}`, onclick: () => { T.set({ pal: k }); render(); } },
+          el("i", { style: `background:${P.card}` }), T.PAL[k].n);
+        return b;
+      })),
+      el("label", {}, "アクセントカラー"),
+      el("div", { class: "tacc" },
+        ...T.ACCENTS.map(c => el("button", { type: "button", class: cur.accent.toLowerCase() === c ? "on" : "", style: `background:${c}`, title: c, onclick: () => { T.set({ accent: c }); render(); } })),
+        colorIn),
+      el("label", {}, "フォント"),
+      el("div", { class: "tfont" }, ...Object.keys(T.FONTS).map(k =>
+        el("button", { type: "button", class: cur.font === k ? "on" : "", style: `font-family:${T.FONTS[k].f}`, onclick: () => { T.set({ font: k }); render(); } },
+          el("span", {}, "ぱしゃっと あいうえお 123"), el("small", {}, T.FONTS[k].n)))),
+      el("label", {}, "アニメーション"),
+      seg([["on", "なめらか"], ["off", "なし"]], cur.anim === false ? "off" : "on", k => { T.set({ anim: k === "on" }); render(); }),
+      el("button", { class: "btn ghost big", type: "button", onclick: () => { T.reset(); render(); toast("初期設定に戻しました"); } }, "初期設定に戻す"));
+  }
+  render();
+  return box;
+}
+
 // ====== 設定 ======
 async function settingsPage(root) {
   const nameIn = el("input", { type: "text", maxlength: 20, value: profile.display_name });
@@ -869,6 +1055,7 @@ async function settingsPage(root) {
     ...(avatarCard ? [avatarCard] : []),
     ...(pushCard ? [pushCard] : []),
     ...(lockCard ? [lockCard] : []),
+    themeSettingsCard(),
     el("div", { class: "card" },
       el("div", { class: "sub" }, "ログイン中のID"),
       el("h2", {}, "@" + profile.login_id),
@@ -900,7 +1087,7 @@ function avatarSettingsCard() {
       el("div", { class: "sub" }, "名前の横や、投稿に表示されます"));
     photoBtns.replaceChildren(
       el("button", { class: "btn", style: "flex:1", onclick: () => fileIn.click() }, "📷 写真を選ぶ"),
-      photo ? el("button", { class: "btn ghost", onclick: () => { photo = null; draw(); } }, "写真をやめる") : null);
+      ...(photo ? [el("button", { class: "btn ghost", onclick: () => { photo = null; draw(); } }, "写真をやめる")] : []));
     small.style.display = photo ? "none" : "block";
     ePick.replaceChildren(el("button", { class: emoji ? "" : "sel", onclick: () => { emoji = ""; draw(); } }, [...profile.display_name][0] || "？"),
       ...AV_EMOJI.map(x => el("button", { class: emoji === x ? "sel" : "", onclick: () => { emoji = x; draw(); } }, x)));
@@ -1466,6 +1653,15 @@ function postCard(p, initialComments, url, ctx) {
     ? el("video", { src: url ? url + "#t=0.1" : "", controls: true, playsinline: true, preload: "metadata" })
     : el("img", { src: url || "", loading: "lazy", alt: "" });
 
+  const mediaBox = el("div", { class: "media" }, media);
+  if (p.media_type !== "video") mediaBox.addEventListener("dblclick", () => {
+    if (!canReact) return;
+    const h = el("span", { class: "bigheart" }, "❤️");
+    mediaBox.append(h);
+    setTimeout(() => h.remove(), 950);
+    const mr = rx.find(r => r.user_id === me.id);
+    if (!mr || mr.emoji !== "❤️") toggleRx("❤️");
+  });
   const clist = el("div", { class: "comments" });
   const countEl = el("span", {}, "");
   const canDelComment = c => isOwner || (c.user_id === me.id && !archived);
@@ -1527,6 +1723,7 @@ function postCard(p, initialComments, url, ctx) {
     if (i >= 0) rx.splice(i, 1);
     if (!same) rx.push({ post_id: p.id, user_id: me.id, emoji: e });
     renderRx();
+    if (!same) { const nb = [...rxbar.children].find(b => b.textContent.startsWith(e)); if (nb) nb.classList.add("pop"); }
   }
   renderRx();
   // 編集（ひとこと・枠）
@@ -1551,7 +1748,7 @@ function postCard(p, initialComments, url, ctx) {
   return el("article", { class: "post" },
     el("div", { class: "phead" }, avatarEl(profs[p.user_id] || { display_name: who }), el("span", { class: "who" }, who)),
     el("div", { class: "polaroid f-" + (FRAMES[p.frame] ? p.frame : "cream") },
-      el("div", { class: "media" }, media),
+      mediaBox,
       el("div", { class: "cap" },
         p.caption ? el("span", { class: "ct" }, p.caption) : null,
         p.caption ? el("span", { class: "dt" }, fmt(p.taken_at), p.media_type === "video" ? el("span", { class: "vbadge" }, "🎬") : null)
