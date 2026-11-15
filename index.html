@@ -220,7 +220,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 .cform .send{background:none;border:0;color:var(--accent);font-weight:700;cursor:pointer}
 
 /* fab */
-.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));z-index:20;width:72px;height:72px;border-radius:50%;border:4px solid var(--card);background:var(--accent);color:var(--on-accent);font-size:30px;box-shadow:0 6px 18px var(--acc-shadow);cursor:pointer}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));z-index:20;width:72px;height:72px;border-radius:50%;border:4px solid var(--card);background:var(--accent);color:var(--on-accent);font-size:30px;box-shadow:0 6px 18px var(--acc-shadow);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:0}
 
 /* modal & toast */
 .overlay{position:fixed;inset:0;z-index:100;background:rgba(40,28,20,.5);display:flex;align-items:center;justify-content:center;padding:20px}
@@ -1636,7 +1636,7 @@ async function groupPage(root, gid) {
       isGuest() ? el("div", { class: "banner" }, "ゲストで参加中です。撮ることと見ることができます。") : null,
       archived ? el("div", { class: "banner" }, "🗄 このグループはアーカイブ済みです。見るのと保存だけできます。", el("br"), "削除はグループを作った人だけができます。") : null,
       feed),
-    ...(archived ? [] : [el("button", { class: "fab", title: "撮影", onclick: () => openCamera(gid, loadFeed) }, "📷")])
+    ...(archived ? [] : [(() => { const b = el("button", { class: "fab", title: "撮影", onclick: () => openCamera(gid, loadFeed) }); b.innerHTML = CAM_SVG; return b; })()])
   );
   await loadFeed();
   return loadFeed;
@@ -1764,6 +1764,7 @@ function postCard(p, initialComments, url, ctx) {
     clist, cform);
 }
 
+const CAM_SVG = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2a1 1 0 0 0 .9-.55l.5-1A1.5 1.5 0 0 1 10.4 3.6h3.2a1.5 1.5 0 0 1 1.3.85l.5 1a1 1 0 0 0 .9.55h1.2A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.6" r="3.6"/></svg>';
 // ====== 通報 ======
 function openReport(p) {
   const reasons = ["不適切な写真・動画", "自分が写っていて困る", "迷惑・いやがらせ", "その他"];
