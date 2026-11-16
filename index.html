@@ -821,13 +821,13 @@ async function enablePush() {
 async function disablePush() {
   if (NATIVE) {
     let t = null; try { t = localStorage.getItem("pasha-fcm"); localStorage.removeItem("pasha-fcm"); } catch (_) {}
-    if (t) await sb.rpc("delete_push_subscription", { p_endpoint: "fcm:" + t }).catch(() => {});
+    if (t) try { await sb.rpc("delete_push_subscription", { p_endpoint: "fcm:" + t }); } catch (_) {}
     try { await NP("PushNotifications").unregister(); } catch (_) {}
     return;
   }
   const sub = await currentSub();
   if (sub) {
-    await sb.rpc("delete_push_subscription", { p_endpoint: sub.endpoint }).catch(() => {});
+    try { await sb.rpc("delete_push_subscription", { p_endpoint: sub.endpoint }); } catch (_) {}
     await sub.unsubscribe().catch(() => {});
   }
 }
