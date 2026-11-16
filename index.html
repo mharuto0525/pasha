@@ -234,8 +234,15 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 .cam .bar{display:flex;justify-content:space-between;align-items:center;padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
 .cam .bar button{background:rgba(255,255,255,.16);border:0;color:#fff;border-radius:999px;padding:8px 14px;font-size:15px;cursor:pointer}
 .cam .view{position:relative;width:100%;aspect-ratio:1/1;background:#111;overflow:hidden}
-.cam video{width:100%;height:100%;object-fit:cover}
-.cam video.mirror{transform:scaleX(-1)}
+.cam video{width:100%;height:100%;object-fit:cover;transform:scale(var(--z,1));transform-origin:center;pointer-events:none;background:#111}
+.cam video.mirror{transform:scaleX(-1) scale(var(--z,1))}
+.cam video::-webkit-media-controls,.cam video::-webkit-media-controls-start-playback-button,.cam video::-webkit-media-controls-overlay-play-button,.cam video::-webkit-media-controls-panel{display:none!important;-webkit-appearance:none}
+.cam .view{touch-action:none}
+.cam .zoombar{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:6px;z-index:2}
+.cam .zoombar button{min-width:42px;height:34px;border-radius:999px;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:14px;cursor:pointer}
+.cam .zoombar button.on{background:rgba(255,255,255,.9);color:#222;font-weight:700}
+.cam .flashscreen{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .1s;z-index:3}
+.cam .flashscreen.on{opacity:1}
 .cam .timer{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(220,40,60,.9);padding:4px 12px;border-radius:999px;font-size:14px;font-weight:700}
 .cam .busy{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:16px}
 .cam .modes{display:flex;justify-content:center;gap:8px;margin-top:20px}
@@ -1700,7 +1707,7 @@ function postCard(p, initialComments, url, ctx) {
   const who = (p.user_id && names[p.user_id]) || (p.user_id ? "退出したメンバー" : "削除されたユーザー");
   const list = [...initialComments];
   const media = p.media_type === "video"
-    ? el("video", { src: url ? url + "#t=0.1" : "", controls: true, playsinline: true, preload: "metadata" })
+    ? el("video", { src: url ? url + "#t=0.1" : "", controls: true, playsinline: true, preload: "metadata", poster: TRANSPARENT_GIF })
     : el("img", { src: url || "", loading: "lazy", alt: "" });
 
   const mediaBox = el("div", { class: "media" }, media);
@@ -1814,6 +1821,7 @@ function postCard(p, initialComments, url, ctx) {
     clist, cform);
 }
 
+const TRANSPARENT_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const CAM_SVG = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2a1 1 0 0 0 .9-.55l.5-1A1.5 1.5 0 0 1 10.4 3.6h3.2a1.5 1.5 0 0 1 1.3.85l.5 1a1 1 0 0 0 .9.55h1.2A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.6" r="3.6"/></svg>';
 // ====== 通報 ======
 function openReport(p) {
@@ -2011,8 +2019,14 @@ function openCamera(gid, onPosted) {
   }
   let mode = "photo", facing = "environment", stream = null, rec = null, chunks = [], timer = null, busy = false, recording = false;
 
-  const video = el("video", { playsinline: true, muted: true, autoplay: true });
-  video.muted = true;
+  const video = el("video", { playsinline: true, muted: true, autoplay: true, poster: TRANSPARENT_GIF, disablepictureinpicture: true });
+  video.muted = true; video.controls = false;
+  let flashOn = false, zoom = 1, hw = null, torchOk = false;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const track = () => (stream && stream.getVideoTracks()[0]) || null;
+  const flashBtn = el("button", { onclick: () => toggleFlash() }, "⚡ オフ");
+  const zoomBar = el("div", { class: "zoombar" });
+  const flashScreen = el("div", { class: "flashscreen" });
   const timerLabel = el("div", { class: "timer", style: "display:none" }, "");
   const busyLabel = el("div", { class: "busy", style: "display:none" }, "投稿中…");
   const shutter = el("button", { class: "shutter", onclick: onShutter }, el("i"));
@@ -2022,10 +2036,16 @@ function openCamera(gid, onPosted) {
   const fpick = framePicker("cream");
   const flip = el("button", { onclick: () => { facing = facing === "user" ? "environment" : "user"; startStream(); } }, "🔄 切替");
 
+  const view = el("div", { class: "view" }, video, timerLabel, busyLabel, zoomBar, flashScreen);
+  let pd = 0, pz = 1;
+  const pdist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  view.addEventListener("touchstart", e => { if (e.touches.length === 2) { pd = pdist(e); pz = zoom; } }, { passive: true });
+  view.addEventListener("touchmove", e => { if (e.touches.length === 2 && pd) { e.preventDefault(); setZoom(pz * pdist(e) / pd); } }, { passive: false });
+  view.addEventListener("touchend", e => { if (e.touches.length < 2) pd = 0; });
   const overlay = el("div", { class: "cam" });
   overlay.replaceChildren(
-    el("div", { class: "bar" }, el("button", { onclick: close }, "✕ 閉じる"), flip),
-    el("div", { class: "view" }, video, timerLabel, busyLabel),
+    el("div", { class: "bar" }, el("button", { onclick: close }, "✕ 閉じる"), flashBtn, flip),
+    view,
     el("div", { class: "modes" }, btnPhoto, btnVideo),
     el("div", { class: "opts" }, capInp, fpick),
     el("div", { class: "shutter-row" }, shutter)
@@ -2056,6 +2076,45 @@ function openCamera(gid, onPosted) {
     video.srcObject = stream;
     video.classList.toggle("mirror", facing === "user");
     try { await video.play(); } catch {}
+    initCaps();
+  }
+  function initCaps() {
+    let c = {};
+    try { const t = track(); c = (t && t.getCapabilities && t.getCapabilities()) || {}; } catch {}
+    hw = (c.zoom && c.zoom.max > c.zoom.min) ? { min: c.zoom.min, max: Math.min(c.zoom.max, 10) } : null;
+    torchOk = !!c.torch;
+    zoom = hw ? Math.max(hw.min, 1) : 1;
+    video.style.removeProperty("--z");
+    updateUi();
+  }
+  const maxZoom = () => (hw ? hw.max : 4);
+  const minZoom = () => (hw ? Math.max(hw.min, 1) : 1);
+  async function setZoom(z) {
+    zoom = Math.min(maxZoom(), Math.max(minZoom(), z));
+    if (hw) { try { await track().applyConstraints({ advanced: [{ zoom }] }); } catch {} }
+    else video.style.setProperty("--z", String(zoom));
+    drawZoom();
+  }
+  function drawZoom() {
+    const lv = [1, 2, 3, 5].filter(v => v >= minZoom() - 0.01 && v <= maxZoom() + 0.01);
+    const near = lv.find(v => Math.abs(v - zoom) < 0.05);
+    zoomBar.replaceChildren(...lv.map(v => el("button", { type: "button", class: near === v ? "on" : "", onclick: () => setZoom(v) }, v + "×")),
+      ...(near ? [] : [el("button", { type: "button", class: "on" }, zoom.toFixed(1) + "×")]));
+    zoomBar.style.display = (!hw && mode === "video") ? "none" : "flex";
+  }
+  function updateUi() {
+    drawZoom();
+    flashBtn.style.visibility = (mode === "photo" || torchOk) ? "visible" : "hidden";
+    flashBtn.textContent = flashOn ? "⚡ オン" : "⚡ オフ";
+  }
+  async function applyTorch(on) {
+    if (!torchOk) return;
+    try { await track().applyConstraints({ advanced: [{ torch: on }] }); } catch {}
+  }
+  function toggleFlash() {
+    flashOn = !flashOn;
+    updateUi();
+    if (recording) applyTorch(flashOn);
   }
   function setMode(m) {
     if (recording || busy || m === mode) return;
@@ -2105,11 +2164,18 @@ function openCamera(gid, onPosted) {
     if (mode === "photo") {
       const vw = video.videoWidth, vh = video.videoHeight;
       if (!vw) return;
-      const s = Math.min(vw, vh), out = Math.min(s, 1080);
+      let usedTorch = false;
+      if (flashOn) {
+        if (torchOk) { await applyTorch(true); usedTorch = true; await sleep(450); }
+        else if (facing === "user") { flashScreen.classList.add("on"); await sleep(350); }
+      }
+      const s0 = Math.min(vw, vh), s = hw ? s0 : s0 / zoom, out = Math.min(Math.round(s), 1080);
       const c = document.createElement("canvas");
       c.width = c.height = out;
       c.getContext("2d").drawImage(video, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, out, out);
       const takenAt = new Date();
+      if (usedTorch) applyTorch(false);
+      flashScreen.classList.remove("on");
       const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
       await upload(blob, "photo", takenAt, "jpg");
     } else if (!recording) {
@@ -2139,6 +2205,7 @@ function openCamera(gid, onPosted) {
     };
     rec.start();
     recording = true;
+    if (flashOn) applyTorch(true);
     shutter.classList.add("rec");
     let left = MAX_VIDEO_SEC;
     timerLabel.style.display = "block";
@@ -2151,6 +2218,7 @@ function openCamera(gid, onPosted) {
   }
   function stopRec() {
     clearInterval(timer);
+    applyTorch(false);
     if (rec && rec.state !== "inactive") rec.stop();
   }
 }
