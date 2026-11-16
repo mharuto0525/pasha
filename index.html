@@ -134,7 +134,8 @@ a{color:inherit}
 .note{color:var(--sub);font-size:12px;line-height:1.7;margin-top:14px}
 .sub{color:var(--sub);font-size:13px}
 .tip{display:flex;gap:8px;align-items:flex-start;background:var(--tip);border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:12px}
-.tip button{background:none;border:0;font-size:18px;line-height:1;cursor:pointer;color:var(--sub)}
+.tip .btn{background:var(--accent);color:var(--on-accent);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700}
+.tip button:not(.btn){background:none;border:0;font-size:18px;line-height:1;cursor:pointer;color:var(--sub)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
 .card + .card{margin-top:14px}
 .card h2{margin:4px 0 12px}
@@ -747,6 +748,7 @@ function loginPage(root) {
   }, el("div", { class: "tabs" }, tLogin, tReg), body, btn, hint, link);
   setMode("login");
   root.append(topbar(APP_NAME), el("main", { class: "wrap" },
+    installTip(),
     el("p", { class: "empty", style: "padding:18px 12px 8px" }, "友達とだけ共有する、思い出カメラ📷"),
     form));
 }
@@ -1363,12 +1365,29 @@ async function friendsPage(root) {
 }
 
 // ====== ホーム ======
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; document.querySelectorAll(".tip.inst").forEach(t => t.__refresh && t.__refresh()); });
+window.addEventListener("appinstalled", () => { installEvt = null; document.querySelectorAll(".tip.inst").forEach(t => t.remove()); toast("インストールしました"); });
 function installTip() {
   const standalone = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
-  if (standalone || store.get("tipClosed")) return null;
-  const box = el("div", { class: "tip" },
-    el("div", { style: "flex:1" }, "ホーム画面に追加するとアプリみたいに使えます。（iPhone：共有ボタン → ホーム画面に追加 ／ Android：メニュー → ホーム画面に追加）"),
+  if (NATIVE || standalone || store.get("tipClosed")) return null;
+  const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const msg = el("div", { style: "flex:1" });
+  const inst = el("button", { class: "btn sm", style: "white-space:nowrap", onclick: async () => {
+    if (!installEvt) return;
+    const ev = installEvt; installEvt = null;
+    try { ev.prompt(); await ev.userChoice; } catch (_) {}
+    box.__refresh();
+  } }, "インストール");
+  const box = el("div", { class: "tip inst" }, msg, inst,
     el("button", { onclick: () => { store.set("tipClosed", "1"); box.remove(); } }, "×"));
+  box.__refresh = () => {
+    inst.style.display = installEvt ? "" : "none";
+    msg.textContent = installEvt ? "ホーム画面に追加すると、アプリみたいに使えます。"
+      : isIos ? "ホーム画面に追加するとアプリみたいに使えます。（共有ボタン → ホーム画面に追加）"
+      : "ホーム画面に追加するとアプリみたいに使えます。（ブラウザのメニュー → ホーム画面に追加／アプリをインストール）";
+  };
+  box.__refresh();
   return box;
 }
 
